@@ -718,7 +718,7 @@ async function listDriveFolder(folderId, apiKey) {
     url.searchParams.set('supportsAllDrives', 'true');
     url.searchParams.set('includeItemsFromAllDrives', 'true');
     if (pageToken) url.searchParams.set('pageToken', pageToken);
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), { cache: 'no-store' });
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       const error = new Error(payload?.error?.message || `HTTP ${response.status}`);
@@ -737,7 +737,7 @@ async function getDriveFolderMeta(folderId, apiKey) {
   url.searchParams.set('key', apiKey);
   url.searchParams.set('fields', 'id,name');
   url.searchParams.set('supportsAllDrives', 'true');
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { cache: 'no-store' });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     const error = new Error(payload?.error?.message || `HTTP ${response.status}`);
@@ -810,7 +810,8 @@ function updateDriveSettingsUI() {
   const sync = storage.get('nexa-drive-sync', null);
   if (config && sync?.items) {
     const date = new Date(sync.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-    setDriveStatus(`${sync.items} títulos encontrados, ${sync.folders} pastas lidas. Atualizado em ${date}.`, 'success');
+    const episodes = Number.isFinite(sync.episodes) ? `, ${sync.episodes} episódios` : '';
+    setDriveStatus(`${sync.items} títulos encontrados, ${sync.folders} pastas lidas${episodes}. Atualizado em ${date}.`, 'success');
   } else if (config) {
     setDriveStatus('Pasta conectada. Sincronizando...');
   } else {
@@ -836,14 +837,16 @@ async function loadDriveLibrary(config, options = {}) {
     const items = buildDriveCatalog(account.files, resolvedConfig.folderName, resolvedConfig.apiKey);
     applyDriveItems(items);
     state.driveConfig = resolvedConfig;
-    const sync = { at: Date.now(), items: items.length, files: account.files.length, folders: account.folders };
+    const episodeCount = items.reduce((total, item) => total + (item.seasons?.reduce((sum, season) => sum + season.episodes.length, 0) || 0), 0);
+    const sync = { at: Date.now(), items: items.length, files: account.files.length, folders: account.folders, episodes: episodeCount };
     storage.set('nexa-drive', resolvedConfig);
     storage.set('nexa-drive-cache', items);
     storage.set('nexa-drive-sync', sync);
     updateDriveSettingsUI();
     const movieCount = items.filter((item) => item.type === 'filme').length;
     const seriesCount = items.filter((item) => item.type === 'serie').length;
-    setDriveStatus(`${items.length} títulos encontrados: ${movieCount} filme${movieCount === 1 ? '' : 's'} e ${seriesCount} série${seriesCount === 1 ? '' : 's'}.`, 'success');
+    const episodeLabel = episodeCount ? ` • ${episodeCount} episódio${episodeCount === 1 ? '' : 's'} em ${account.files.length} arquivos` : '';
+    setDriveStatus(`${items.length} títulos encontrados: ${movieCount} filme${movieCount === 1 ? '' : 's'} e ${seriesCount} série${seriesCount === 1 ? '' : 's'}${episodeLabel}.`, 'success');
     if (state.view === 'busca') handleSearch(state.query);
     else refreshCurrentView();
     if (!options.silent) showToast(`Google Drive conectado: ${items.length} títulos encontrados`, 'success');
