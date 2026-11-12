@@ -761,11 +761,20 @@ function setDriveStatus(message, type = '') {
   status.classList.toggle('is-success', type === 'success');
 }
 
+function updateDriveNavCount() {
+  const count = catalog.filter((item) => item.drive).length;
+  const badge = document.getElementById('drive-count');
+  if (!badge) return;
+  badge.textContent = count;
+  badge.hidden = !count;
+}
+
 function applyDriveItems(items) {
   for (let index = catalog.length - 1; index >= 0; index -= 1) {
     if (catalog[index].drive) catalog.splice(index, 1);
   }
   catalog.push(...items);
+  updateDriveNavCount();
 }
 
 function updateDriveSettingsUI() {
@@ -1583,6 +1592,14 @@ themeToggle.addEventListener('click', () => setTheme(!document.body.classList.co
 document.getElementById('settings-theme').addEventListener('click', () => setTheme(!document.body.classList.contains('light-theme')));
 autoplaySwitch.addEventListener('click', () => setAutoplay(!state.autoplay));
 settingsQuality.addEventListener('change', () => setQuality(settingsQuality.value));
+document.getElementById('drive-nav').addEventListener('click', () => {
+  closeSidebar();
+  openSettings();
+  window.setTimeout(() => {
+    document.querySelector('.drive-settings')?.scrollIntoView({ block: 'start' });
+    document.getElementById('drive-folder')?.focus({ preventScroll: true });
+  }, 60);
+});
 document.getElementById('drive-connect').addEventListener('click', connectDrive);
 document.getElementById('drive-disconnect').addEventListener('click', disconnectDrive);
 ['drive-folder', 'drive-key'].forEach((id) => {
