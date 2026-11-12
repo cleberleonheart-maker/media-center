@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#080808">
+  <meta name="description" content="NEXA, seu media center completo para filmes, séries e documentários.">
+  <title>NEXA — Media Center</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NEXA">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e50914'/%3E%3Cpath d='M20 17h8v30h-8zm16 0h8v30h-8z' fill='white'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
+
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></symbol>
+    <symbol id="icon-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4m10 0h4M3 15h4m10 0h4"/></symbol>
+    <symbol id="icon-tv" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m8 2 4 3 4-3m-7 18h6"/></symbol>
+    <symbol id="icon-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4Z"/></symbol>
+    <symbol id="icon-sparkle" viewBox="0 0 24 24"><path d="m12 2 1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8ZM19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9Z"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M5 9v6h4l5 4V5L9 9Zm12-1a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="icon-muted" viewBox="0 0 24 24"><path d="M5 9v6h4l5 4V5L9 9Zm12 1 5 5m0-5-5 5"/></symbol>
+    <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="icon-thumbs-up" viewBox="0 0 24 24"><path d="M7 22H3V10h4m0 12h9.5a2 2 0 0 0 2-1.6l1.2-7A2 2 0 0 0 17.7 11H14l.7-3.2A3 3 0 0 0 11.8 5L7 10"/></symbol>
+    <symbol id="icon-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4m-6.8 7 6.8 4"/></symbol>
+    <symbol id="icon-logout" viewBox="0 0 24 24"><path d="M10 4H4v16h6m5-4 4-4-4-4m4 4H9"/></symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.5 15.5A9 9 0 0 1 8.5 3.5a9 9 0 1 0 12 12Z"/></symbol>
+    <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 20h16"/></symbol>
+  </svg>
+
+  <div class="loading-screen" id="loading-screen" aria-hidden="true">
+    <div class="loading-logo">N</div>
+    <div class="loading-bar"><span></span></div>
+  </div>
+
+  <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+      <div class="sidebar-top">
+        <a class="brand" href="#" data-view-link="home" aria-label="NEXA, página inicial">
+          <span class="brand-mark">N</span>
+          <span class="brand-name">NEXA</span>
+        </a>
+        <button class="icon-button sidebar-close" id="sidebar-close" aria-label="Fechar menu">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+
+      <nav class="main-nav">
+        <p class="nav-label">Menu</p>
+        <button class="nav-item active" data-view="home">
+          <svg><use href="#icon-home"></use></svg><span>Início</span>
+        </button>
+        <button class="nav-item" data-view="filmes">
+          <svg><use href="#icon-film"></use></svg><span>Filmes</span>
+        </button>
+        <button class="nav-item" data-view="series">
+          <svg><use href="#icon-tv"></use></svg><span>Séries</span>
+        </button>
+        <button class="nav-item" data-view="lista">
+          <svg><use href="#icon-bookmark"></use></svg><span>Minha lista</span>
+          <span class="nav-count" id="list-count">0</span>
+        </button>
+
+        <p class="nav-label nav-label-spaced">Descobrir</p>
+        <button class="nav-item" data-view="originais">
+          <svg><use href="#icon-sparkle"></use></svg><span>Originais</span>
+        </button>
+        <button class="nav-item" data-view="novidades">
+          <svg><use href="#icon-plus"></use></svg><span>Novidades</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="nav-item install-button" id="install-button" hidden>
+          <svg><use href="#icon-download"></use></svg>
+          <span>Instalar app</span>
+        </button>
+        <button class="nav-item theme-toggle" id="theme-toggle">
+          <svg class="theme-moon"><use href="#icon-moon"></use></svg>
+          <svg class="theme-sun"><use href="#icon-sun"></use></svg>
+          <span>Tema claro</span>
+        </button>
+        <button class="profile-card" id="profile-button" aria-expanded="false">
+          <span class="avatar">CL</span>
+          <span class="profile-copy"><strong>Cleber Leonheart</strong><small>Perfil principal</small></span>
+          <svg><use href="#icon-chevron"></use></svg>
+        </button>
+      </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebar-scrim"></div>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menu-button" aria-label="Abrir menu">
+          <svg><use href="#icon-menu"></use></svg>
+        </button>
+        <a class="mobile-brand" href="#" data-view-link="home">NEXA</a>
+
+        <form class="search-box" id="search-form" role="search">
+          <svg><use href="#icon-search"></use></svg>
+          <input id="search-input" type="search" placeholder="Títulos, gêneros, pessoas..." autocomplete="off" aria-label="Buscar no catálogo">
+          <kbd>⌘ K</kbd>
+          <button class="search-clear" id="search-clear" type="button" aria-label="Limpar busca">
+            <svg><use href="#icon-close"></use></svg>
+          </button>
+        </form>
+
+        <div class="top-actions">
+          <button class="icon-button notification-button" id="notification-button" aria-label="Notificações" aria-expanded="false">
+            <svg><use href="#icon-bell"></use></svg>
+            <span class="notification-dot" aria-hidden="true"></span>
+          </button>
+          <button class="mini-profile" id="mini-profile-button" aria-label="Abrir perfil" aria-expanded="false">CL</button>
+        </div>
+
+        <div class="popover notifications-popover" id="notifications-popover" hidden>
+          <div class="popover-heading"><strong>Novidades</strong><button id="mark-read">Marcar como lidas</button></div>
+          <button class="notification-item" data-notification>
+            <span class="notification-icon">N</span>
+            <span><strong>Novos episódios disponíveis</strong><small>“Cidade Invisível” tem um novo capítulo.</small><time>Há 2 h</time></span>
+          </button>
+          <button class="notification-item" data-notification>
+            <span class="notification-icon red">N</span>
+            <span><strong>Sua lista foi atualizada</strong><small>Novos filmes e séries foram adicionados.</small><time>Ontem</time></span>
+          </button>
+        </div>
+
+        <div class="popover profile-popover" id="profile-popover" hidden>
+          <div class="popover-profile">
+            <span class="avatar large">CL</span>
+            <span><strong>Cleber Leonheart</strong><small>cleber@nexa.tv</small></span>
+          </div>
+          <button class="popover-action" id="profile-preferences"><svg><use href="#icon-settings"></use></svg> Preferências</button>
+          <button class="popover-action" id="profile-logout"><svg><use href="#icon-logout"></use></svg> Sair</button>
+        </div>
+      </header>
+
+      <main id="main-content" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Navegação móvel">
+    <button class="active" data-view="home"><svg><use href="#icon-home"></use></svg><span>Início</span></button>
+    <button data-view="filmes"><svg><use href="#icon-film"></use></svg><span>Filmes</span></button>
+    <button data-view="series"><svg><use href="#icon-tv"></use></svg><span>Séries</span></button>
+    <button data-view="lista"><svg><use href="#icon-bookmark"></use></svg><span>Lista</span></button>
+  </nav>
+
+  <dialog class="details-dialog" id="details-dialog" aria-labelledby="detail-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close details-close" data-close-dialog aria-label="Fechar">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="detail-hero" id="detail-hero"></div>
+      <div class="detail-content">
+        <div class="detail-main">
+          <p class="eyebrow" id="detail-eyebrow"></p>
+          <h1 id="detail-title"></h1>
+          <div class="detail-meta" id="detail-meta"></div>
+          <div class="detail-actions">
+            <button class="button button-primary" id="detail-play"><svg><use href="#icon-play"></use></svg><span>Assistir</span></button>
+            <button class="button button-secondary" id="detail-list"><svg><use href="#icon-plus"></use></svg><span>Adicionar à lista</span></button>
+            <button class="button button-icon" id="detail-like" aria-label="Gostei"><svg><use href="#icon-thumbs-up"></use></svg></button>
+            <button class="button button-icon" id="detail-share" aria-label="Compartilhar"><svg><use href="#icon-share"></use></svg></button>
+          </div>
+          <p class="detail-description" id="detail-description"></p>
+          <div class="detail-facts">
+            <p><strong>Gênero:</strong> <span id="detail-genre"></span></p>
+            <p><strong>Direção:</strong> <span id="detail-director"></span></p>
+            <p><strong>Elenco:</strong> <span id="detail-cast"></span></p>
+          </div>
+        </div>
+        <aside class="detail-aside">
+          <div><span>Classificação</span><strong id="detail-rating"></strong></div>
+          <div><span>Duração</span><strong id="detail-duration"></strong></div>
+          <div><span>Qualidade</span><strong>4K · HDR</strong></div>
+          <div><span>Áudio</span><strong>Dolby Atmos</strong></div>
+        </aside>
+      </div>
+      <section class="episodes-section" id="episodes-section">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">Temporadas</p><h2>Episódios</h2></div>
+          <select id="season-select" aria-label="Selecionar temporada"></select>
+        </div>
+        <div class="episode-list" id="episode-list"></div>
+      </section>
+      <section class="related-section">
+        <div class="section-heading compact"><h2>Você também pode gostar</h2></div>
+        <div class="related-grid" id="related-grid"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="player-dialog" id="player-dialog" aria-label="Player de vídeo">
+    <div class="player-shell" id="player-shell">
+      <video id="video-player" playsinline preload="metadata"></video>
+      <div class="player-shade"></div>
+      <button class="player-center-play" id="player-center-play" aria-label="Reproduzir">
+        <svg><use href="#icon-play"></use></svg>
+      </button>
+      <div class="player-top">
+        <div class="player-title-wrap">
+          <strong id="player-title"></strong>
+          <span id="player-episode"></span>
+        </div>
+        <button class="player-icon" id="player-close" aria-label="Fechar player"><svg><use href="#icon-close"></use></svg></button>
+      </div>
+      <div class="player-controls">
+        <div class="player-progress">
+          <div class="buffered-bar" id="buffered-bar"></div>
+          <input id="player-progress" type="range" min="0" max="100" value="0" step="0.1" aria-label="Progresso do vídeo">
+        </div>
+        <div class="control-bar">
+          <button class="player-icon" id="player-play" aria-label="Reproduzir"><svg class="play-icon"><use href="#icon-play"></use></svg><svg class="pause-icon"><use href="#icon-pause"></use></svg></button>
+          <button class="player-icon" id="player-back" aria-label="Voltar 10 segundos"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
+          <button class="player-icon" id="player-forward" aria-label="Avançar 10 segundos"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
+          <div class="volume-control">
+            <button class="player-icon" id="player-mute" aria-label="Silenciar"><svg class="volume-on"><use href="#icon-volume"></use></svg><svg class="volume-off"><use href="#icon-muted"></use></svg></button>
+            <input id="player-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume">
+          </div>
+          <span class="player-time"><span id="player-current">0:00</span> / <span id="player-duration">0:00</span></span>
+          <span class="control-spacer"></span>
+          <button class="quality-button" id="player-quality">HD</button>
+          <button class="player-icon" id="player-fullscreen" aria-label="Tela cheia"><svg><use href="#icon-expand"></use></svg></button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="details-dialog settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close" id="settings-close" aria-label="Fechar preferências">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="settings-content">
+        <p class="eyebrow">Sua conta</p>
+        <h1 id="settings-title">Preferências</h1>
+        <p class="settings-intro">Ajuste a experiência do NEXA neste navegador. As escolhas ficam salvas automaticamente.</p>
+        <div class="settings-list">
+          <div class="settings-row">
+            <div><strong>Tema</strong><small>Alterne entre a interface escura e a clara.</small></div>
+            <button class="button button-secondary" id="settings-theme" type="button">Tema claro</button>
+          </div>
+          <div class="settings-row">
+            <div><strong>Reprodução automática</strong><small>Inicie o vídeo assim que o player abrir.</small></div>
+            <button class="switch" id="settings-autoplay" type="button" role="switch" aria-checked="true" aria-label="Reprodução automática"><span></span></button>
+          </div>
+          <div class="settings-row">
+            <div><strong>Qualidade padrão</strong><small>Aplicada a todas as reproduções.</small></div>
+            <select class="sort-select" id="settings-quality" aria-label="Qualidade padrão">
+              <option value="HD">HD</option>
+              <option value="4K">4K</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
