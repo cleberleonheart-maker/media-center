@@ -2131,6 +2131,78 @@ body.modal-open .topbar {
   transform: translateX(20px);
 }
 
+.drive-settings {
+  margin-top: 28px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+}
+
+.drive-settings h2 {
+  margin: 0 0 8px;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: -0.6px;
+}
+
+.drive-settings .settings-intro {
+  margin-bottom: 18px;
+}
+
+.settings-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-field input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.drive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.drive-actions .button {
+  min-height: 38px;
+  padding: 0 18px;
+  font-size: 12px;
+}
+
+.settings-note {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.settings-note.is-error {
+  color: #ff8d8d;
+}
+
+.settings-note.is-success {
+  color: #7ee0a0;
+}
+
 @media (max-width: 560px) {
   .settings-content {
     padding: 34px 20px 30px;

@@ -381,6 +381,7 @@ const state = {
   activeSeason: 0,
   activeEpisode: 0,
   activeVideo: null,
+  driveConfig: null,
   hideControlsTimer: null
 };
 
@@ -406,6 +407,466 @@ const typeLabel = {
   serie: 'Série',
   documentario: 'Documentário'
 };
+
+const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
+const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+const DRIVE_VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'ogv', 'ogg', 'mov', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'm2ts']);
+const DRIVE_BROWSER_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'ogv', 'ogg']);
+const DRIVE_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif']);
+const DRIVE_GENERIC_FOLDER = /^(filmes?|movies?|s[ée]ries?|series|shows?|tv|televis[aã]o|v[ií]deos?|videos?|m[ií]dia|media|meu drive|my drive|google drive|animes?|anima[cç][aã]o|document[aá]rios?|a[cç][aã]o|com[eé]dia|drama|terror|suspense|fic[cç][aã]o|romance|infantil|fam[ií]lia|familia)$/i;
+const DRIVE_SERIES_HINT = /\b(s[ée]ries?|series|shows?|tv|televis[aã]o|animes?|novelas?)\b/i;
+let driveLoading = false;
+
+function driveFileExtension(name) {
+  const match = String(name || '').match(/\.([a-z0-9]{2,5})$/i);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function isDriveFolder(file) {
+  return file?.mimeType === DRIVE_FOLDER_MIME;
+}
+
+function isDriveVideo(file) {
+  if (!file) return false;
+  return String(file.mimeType || '').startsWith('video/') || DRIVE_VIDEO_EXTENSIONS.has(driveFileExtension(file.name));
+}
+
+function isDriveImage(file) {
+  if (!file) return false;
+  return String(file.mimeType || '').startsWith('image/') || DRIVE_IMAGE_EXTENSIONS.has(driveFileExtension(file.name));
+}
+
+function isBrowserVideo(file) {
+  return DRIVE_BROWSER_EXTENSIONS.has(driveFileExtension(file?.name)) || ['video/mp4', 'video/webm', 'video/ogg'].includes(file?.mimeType);
+}
+
+function parseDriveFolderId(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const folderMatch = text.match(/(?:\/folders\/|\/drive\/u\/\d+\/folders\/)([A-Za-z0-9_-]{8,})/);
+  if (folderMatch) return folderMatch[1];
+  const idMatch = text.match(/[?&]id=([A-Za-z0-9_-]{8,})/);
+  if (idMatch) return idMatch[1];
+  if (/^[A-Za-z0-9_-]{8,}$/.test(text)) return text;
+  return null;
+}
+
+function splitDriveTitle(raw) {
+  let name = String(raw || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const yearMatch = name.match(/\b(19\d{2}|20\d{2})\b/);
+  const year = yearMatch ? Number(yearMatch[1]) : null;
+  let title = name
+    .replace(/\b(19\d{2}|20\d{2})\b/g, ' ')
+    .replace(/\b(2160p|1080p|720p|480p|4k|uhd|bluray|blu ray|brrip|bdrip|webrip|web dl|webdl|hdrip|dvdrip|remux|proper|repack|x264|x265|h264|h265|hevc|av1|aac|ac3|eac3|dts|dual audio|dublado|legendado)\b.*$/i, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  title = title.replace(/^[-–—\s]+|[-–—\s]+$/g, '');
+  return { title: title || name || String(raw || ''), year };
+}
+
+function parseSeasonNumber(name) {
+  const text = String(name || '').replace(/[._]+/g, ' ').trim();
+  let match = text.match(/\b(?:temporada|season|temp)\s*(\d{1,2})\b/i);
+  if (match) return Number(match[1]);
+  match = text.match(/^\s*(\d{1,2})\s*[ªa]?\s*temporada\b/i);
+  if (match) return Number(match[1]);
+  match = text.match(/^\s*(?:t|s)(\d{1,2})\s*$/i);
+  return match ? Number(match[1]) : null;
+}
+
+function parseEpisodeInfo(name) {
+  const text = String(name || '').replace(/[._]+/g, ' ');
+  let match = text.match(/\b(?:s|t)(\d{1,2})\s*[\s-]*e(\d{1,3})\b/i) || text.match(/\b(\d{1,2})x(\d{1,3})\b/i);
+  if (match) return { season: Number(match[1]), episode: Number(match[2]), explicit: true };
+  match = text.match(/\b(?:epis[oó]dio|episode|ep|cap[ií]tulo)\s*(\d{1,3})\b/i);
+  if (match) return { season: null, episode: Number(match[1]), explicit: true };
+  match = text.match(/\bE(\d{1,3})\b/i);
+  if (match) return { season: null, episode: Number(match[1]), explicit: true };
+  return { season: null, episode: null, explicit: false };
+}
+
+function cleanEpisodeTitle(raw, episodeNumber) {
+  const base = splitDriveTitle(raw).title;
+  const title = base
+    .replace(/\b(?:s|t)\d{1,2}\s*[\s-]*e\d{1,3}\b/ig, ' ')
+    .replace(/\b\d{1,2}x\d{1,3}\b/ig, ' ')
+    .replace(/\b(?:epis[oó]dio|episode|ep|cap[ií]tulo)\s*\d{1,3}\b/ig, ' ')
+    .replace(/\b(?:t|s)\d{1,2}\b/ig, ' ')
+    .replace(/\bE\d{1,3}\b/ig, ' ')
+    .replace(/^\s*\d{1,3}\s*[-–—.)]\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return title || `Episódio ${episodeNumber || ''}`.trim();
+}
+
+function formatDriveDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.round((total % 3600) / 60);
+  return hours ? `${hours}h ${String(minutes).padStart(2, '0')}min` : `${Math.max(1, minutes)}min`;
+}
+
+function driveThumbnail(fileId, size = 780) {
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w${size}`;
+}
+
+function driveMediaUrl(fileId, apiKey) {
+  return `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&key=${encodeURIComponent(apiKey)}&supportsAllDrives=true`;
+}
+
+function driveDownloadUrl(fileId) {
+  return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
+}
+
+function normalizeDriveKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'biblioteca';
+}
+
+function pickDriveArtwork(images, folderId, fallbackFileId) {
+  const inFolder = images.filter((image) => image.ancestors?.some((ancestor) => ancestor.id === folderId));
+  const artwork = inFolder.find((image) => /^(poster|folder|cover|fanart|backdrop)/i.test(image.name)) || inFolder[0];
+  const imageId = artwork?.id || fallbackFileId;
+  return {
+    poster: driveThumbnail(imageId, 780),
+    backdrop: driveThumbnail(imageId, 1280)
+  };
+}
+
+function buildDriveCatalog(files, rootName, apiKey) {
+  const videos = files.filter(isDriveVideo);
+  const images = files.filter(isDriveImage);
+  const movieItems = [];
+  const seriesMap = new Map();
+
+  videos.forEach((file) => {
+    const ancestors = file.ancestors || [];
+    const names = ancestors.map((ancestor) => ancestor.name);
+    let seasonFolderIndex = -1;
+    names.forEach((name, index) => {
+      if (parseSeasonNumber(name) !== null) seasonFolderIndex = index;
+    });
+    const episodeInfo = parseEpisodeInfo(file.name);
+    const pathText = [...names, file.name].join('/');
+    const isSeries = DRIVE_SERIES_HINT.test(pathText) || seasonFolderIndex >= 0 || episodeInfo.explicit;
+
+    if (!isSeries) {
+      const parent = ancestors[ancestors.length - 1] || null;
+      const usableParent = parent && !DRIVE_GENERIC_FOLDER.test(parent.name) ? parent : null;
+      const folderTitle = usableParent ? splitDriveTitle(usableParent.name) : { title: null, year: null };
+      const fileTitle = splitDriveTitle(file.name);
+      const title = folderTitle.title || fileTitle.title;
+      const modifiedYear = file.modifiedTime ? new Date(file.modifiedTime).getFullYear() : null;
+      const year = folderTitle.year || fileTitle.year || modifiedYear || new Date().getFullYear();
+      const durationSeconds = file.videoMediaMetadata?.durationMillis ? Number(file.videoMediaMetadata.durationMillis) / 1000 : null;
+      const art = pickDriveArtwork(images, parent?.id || file.id, file.id);
+      movieItems.push({
+        id: `drive-file-${file.id}`,
+        title,
+        type: 'filme',
+        year,
+        duration: formatDriveDuration(durationSeconds) || 'Duração não informada',
+        maturity: 'L',
+        match: 95,
+        rating: '—',
+        genres: ['Google Drive'],
+        description: `“${title}” está na sua biblioteca do Google Drive.`,
+        cast: [],
+        director: 'Biblioteca pessoal',
+        poster: art.poster,
+        backdrop: art.backdrop,
+        video: driveMediaUrl(file.id, apiKey || ''),
+        drive: true,
+        driveFileId: file.id,
+        driveName: file.name,
+        driveFolderId: parent?.id || null,
+        playable: isBrowserVideo(file),
+        new: true
+      });
+      return;
+    }
+
+    let seriesRoot = null;
+    const hintIndex = names.findIndex((name) => DRIVE_SERIES_HINT.test(name));
+    if (hintIndex >= 0) seriesRoot = ancestors[hintIndex + 1] || null;
+    if (!seriesRoot && seasonFolderIndex > 0) seriesRoot = ancestors[seasonFolderIndex - 1];
+    if (!seriesRoot && seasonFolderIndex < 0 && episodeInfo.explicit && ancestors.length) seriesRoot = ancestors[0];
+    if (!seriesRoot && seasonFolderIndex < 0) seriesRoot = ancestors[ancestors.length - 1] || null;
+
+    const rawSeriesName = seriesRoot?.name || splitDriveTitle(file.name).title || rootName || 'Série';
+    const key = seriesRoot?.id || `name:${normalizeDriveKey(rawSeriesName)}`;
+    if (!seriesMap.has(key)) {
+      const seriesMeta = splitDriveTitle(rawSeriesName);
+      seriesMap.set(key, {
+        root: seriesRoot,
+        name: seriesMeta.title,
+        year: seriesMeta.year,
+        seasons: new Map()
+      });
+    }
+    const entry = seriesMap.get(key);
+    const seasonNumber = episodeInfo.season ?? (seasonFolderIndex >= 0 ? parseSeasonNumber(names[seasonFolderIndex]) : null) ?? 1;
+    const episodeNumber = episodeInfo.episode;
+    if (!entry.seasons.has(seasonNumber)) entry.seasons.set(seasonNumber, []);
+    entry.seasons.get(seasonNumber).push({ file, episodeNumber, title: null });
+  });
+
+  const seriesItems = [...seriesMap.values()].map((entry) => {
+    const seasons = [...entry.seasons.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([seasonNumber, rawEpisodes]) => {
+        const episodes = [...rawEpisodes].sort((a, b) => {
+          if (a.episodeNumber == null && b.episodeNumber == null) return a.file.name.localeCompare(b.file.name, 'pt-BR');
+          if (a.episodeNumber == null) return 1;
+          if (b.episodeNumber == null) return -1;
+          return a.episodeNumber - b.episodeNumber || a.file.name.localeCompare(b.file.name, 'pt-BR');
+        });
+        let nextNumber = 1;
+        episodes.forEach((episode) => {
+          if (episode.episodeNumber == null) {
+            while (episodes.some((candidate) => candidate.episodeNumber === nextNumber)) nextNumber += 1;
+            episode.episodeNumber = nextNumber;
+          }
+          nextNumber = Math.max(nextNumber, episode.episodeNumber + 1);
+          episode.title = cleanEpisodeTitle(episode.file.name, episode.episodeNumber);
+        });
+        const episodeFiles = episodes.map((episode) => {
+          const durationSeconds = episode.file.videoMediaMetadata?.durationMillis ? Number(episode.file.videoMediaMetadata.durationMillis) / 1000 : null;
+          return {
+            number: episode.episodeNumber,
+            title: episode.title,
+            fileId: episode.file.id,
+            video: driveMediaUrl(episode.file.id, apiKey || ''),
+            duration: formatDriveDuration(durationSeconds),
+            modifiedTime: episode.file.modifiedTime,
+            thumbnail: driveThumbnail(episode.file.id, 780),
+            playable: isBrowserVideo(episode.file)
+          };
+        });
+        return {
+          name: `Temporada ${seasonNumber}`,
+          episodes: episodeFiles.map((episode) => episode.title),
+          episodeFiles
+        };
+      });
+
+    const allEpisodes = seasons.flatMap((season) => season.episodeFiles);
+    const firstEpisode = allEpisodes[0];
+    const art = pickDriveArtwork(images, entry.root?.id || firstEpisode?.fileId, firstEpisode?.fileId);
+    const year = entry.year || (firstEpisode?.modifiedTime ? new Date(firstEpisode.modifiedTime).getFullYear() : null) || new Date().getFullYear();
+    return {
+      id: `drive-series-${entry.root?.id || normalizeDriveKey(entry.name)}`,
+      title: entry.name,
+      type: 'serie',
+      year,
+      duration: `${seasons.length} temporada${seasons.length === 1 ? '' : 's'}`,
+      maturity: 'L',
+      match: 96,
+      rating: '—',
+      genres: ['Google Drive'],
+      description: `Série com ${allEpisodes.length} episódio${allEpisodes.length === 1 ? '' : 's'} na sua biblioteca do Google Drive.`,
+      cast: [],
+      director: 'Biblioteca pessoal',
+      poster: art.poster,
+      backdrop: art.backdrop,
+      video: firstEpisode?.video || '',
+      seasons,
+      drive: true,
+      driveFolderId: entry.root?.id || null,
+      playable: allEpisodes.some((episode) => episode.playable),
+      new: true
+    };
+  });
+
+  return [...seriesItems, ...movieItems];
+}
+
+async function listDriveFolder(folderId, apiKey) {
+  const files = [];
+  let pageToken = null;
+  do {
+    const url = new URL(DRIVE_API);
+    const safeFolderId = String(folderId).replace(/'/g, "\\'");
+    url.searchParams.set('q', `'${safeFolderId}' in parents and trashed = false`);
+    url.searchParams.set('key', apiKey);
+    url.searchParams.set('fields', 'nextPageToken,files(id,name,mimeType,size,modifiedTime,videoMediaMetadata(durationMillis,width,height))');
+    url.searchParams.set('pageSize', '1000');
+    url.searchParams.set('supportsAllDrives', 'true');
+    url.searchParams.set('includeItemsFromAllDrives', 'true');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const error = new Error(payload?.error?.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    const data = await response.json();
+    files.push(...(data.files || []));
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+  return files;
+}
+
+async function getDriveFolderMeta(folderId, apiKey) {
+  const url = new URL(`${DRIVE_API}/${encodeURIComponent(folderId)}`);
+  url.searchParams.set('key', apiKey);
+  url.searchParams.set('fields', 'id,name');
+  url.searchParams.set('supportsAllDrives', 'true');
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const error = new Error(payload?.error?.message || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+async function walkDriveFolder(folderId, ancestors, account, config) {
+  if (account.folders >= 120 || account.files.length >= 2000) return;
+  const children = await listDriveFolder(folderId, config.apiKey);
+  for (const child of children) {
+    if (isDriveFolder(child)) {
+      if (account.folders >= 120) continue;
+      account.folders += 1;
+      await walkDriveFolder(child.id, [...ancestors, { id: child.id, name: child.name }], account, config);
+      if (account.files.length >= 2000) break;
+    } else if (isDriveVideo(child) || isDriveImage(child)) {
+      account.files.push({ ...child, ancestors });
+      if (account.files.length >= 2000) break;
+    }
+  }
+}
+
+function driveErrorMessage(error) {
+  if (!navigator.onLine) return 'Você está offline. Conecte-se para atualizar a pasta do Drive.';
+  if (error?.status === 400 || error?.status === 403) return 'A chave da API foi recusada. Confira a chave e as restrições de domínio no Google Cloud.';
+  if (error?.status === 404) return 'Pasta não encontrada. Verifique se o link está correto e se a pasta está pública.';
+  if (error?.status === 429) return 'O limite de consultas do Google foi atingido. Tente novamente mais tarde.';
+  return `Não foi possível ler a pasta do Drive: ${error?.message || 'erro desconhecido'}`;
+}
+
+function setDriveStatus(message, type = '') {
+  const status = document.getElementById('drive-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', type === 'error');
+  status.classList.toggle('is-success', type === 'success');
+}
+
+function applyDriveItems(items) {
+  for (let index = catalog.length - 1; index >= 0; index -= 1) {
+    if (catalog[index].drive) catalog.splice(index, 1);
+  }
+  catalog.push(...items);
+}
+
+function updateDriveSettingsUI() {
+  const folderInput = document.getElementById('drive-folder');
+  const keyInput = document.getElementById('drive-key');
+  const disconnectButton = document.getElementById('drive-disconnect');
+  const connectButton = document.getElementById('drive-connect');
+  if (!folderInput || !keyInput || !disconnectButton || !connectButton) return;
+  const config = state.driveConfig;
+  folderInput.value = config?.folderId || '';
+  keyInput.value = config?.apiKey || '';
+  disconnectButton.hidden = !config;
+  connectButton.textContent = config ? 'Atualizar pasta' : 'Conectar pasta';
+  const sync = storage.get('nexa-drive-sync', null);
+  if (config && sync?.items) {
+    const date = new Date(sync.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    setDriveStatus(`${sync.items} títulos encontrados, ${sync.folders} pastas lidas. Atualizado em ${date}.`, 'success');
+  } else if (config) {
+    setDriveStatus('Pasta conectada. Sincronizando...');
+  } else {
+    setDriveStatus('Nenhuma pasta conectada.');
+  }
+}
+
+async function loadDriveLibrary(config, options = {}) {
+  if (driveLoading) return;
+  driveLoading = true;
+  const connectButton = document.getElementById('drive-connect');
+  if (connectButton) connectButton.disabled = true;
+  setDriveStatus('Lendo a pasta do Drive... Isso pode levar alguns segundos.');
+  try {
+    const meta = await getDriveFolderMeta(config.folderId, config.apiKey).catch(() => null);
+    const resolvedConfig = {
+      folderId: config.folderId,
+      apiKey: config.apiKey,
+      folderName: meta?.name || config.folderName || ''
+    };
+    const account = { folders: 0, files: [] };
+    await walkDriveFolder(resolvedConfig.folderId, [], account, resolvedConfig);
+    const items = buildDriveCatalog(account.files, resolvedConfig.folderName, resolvedConfig.apiKey);
+    applyDriveItems(items);
+    state.driveConfig = resolvedConfig;
+    const sync = { at: Date.now(), items: items.length, files: account.files.length, folders: account.folders };
+    storage.set('nexa-drive', resolvedConfig);
+    storage.set('nexa-drive-cache', items);
+    storage.set('nexa-drive-sync', sync);
+    updateDriveSettingsUI();
+    const movieCount = items.filter((item) => item.type === 'filme').length;
+    const seriesCount = items.filter((item) => item.type === 'serie').length;
+    setDriveStatus(`${items.length} títulos encontrados: ${movieCount} filme${movieCount === 1 ? '' : 's'} e ${seriesCount} série${seriesCount === 1 ? '' : 's'}.`, 'success');
+    if (state.view === 'busca') handleSearch(state.query);
+    else refreshCurrentView();
+    if (!options.silent) showToast(`Google Drive conectado: ${items.length} títulos encontrados`, 'success');
+  } catch (error) {
+    setDriveStatus(driveErrorMessage(error), 'error');
+    if (!options.silent) showToast(driveErrorMessage(error), 'error');
+  } finally {
+    driveLoading = false;
+    if (connectButton) connectButton.disabled = false;
+  }
+}
+
+async function connectDrive() {
+  const folderId = parseDriveFolderId(document.getElementById('drive-folder')?.value);
+  const apiKey = document.getElementById('drive-key')?.value.trim();
+  if (!folderId) {
+    setDriveStatus('Informe um link ou ID válido de uma pasta do Google Drive.', 'error');
+    document.getElementById('drive-folder')?.focus();
+    return;
+  }
+  if (!apiKey) {
+    setDriveStatus('Informe a chave da API do Google.', 'error');
+    document.getElementById('drive-key')?.focus();
+    return;
+  }
+  await loadDriveLibrary({ folderId, apiKey });
+}
+
+function disconnectDrive() {
+  state.driveConfig = null;
+  applyDriveItems([]);
+  storage.set('nexa-drive', null);
+  storage.set('nexa-drive-cache', []);
+  storage.set('nexa-drive-sync', null);
+  updateDriveSettingsUI();
+  if (state.view === 'busca') handleSearch(state.query);
+  else refreshCurrentView();
+  showToast('Google Drive desconectado', 'success');
+}
+
+function restoreDriveLibrary() {
+  const config = storage.get('nexa-drive', null);
+  const cached = storage.get('nexa-drive-cache', null);
+  state.driveConfig = config?.folderId && config?.apiKey ? config : null;
+  if (Array.isArray(cached) && cached.length && state.driveConfig) {
+    applyDriveItems(cached);
+    if (state.view === 'home') renderHome();
+  }
+  updateDriveSettingsUI();
+  if (state.driveConfig) loadDriveLibrary(state.driveConfig, { silent: true });
+}
 
 function icon(name) {
   return `<svg aria-hidden="true"><use href="#${icons[name] || name}"></use></svg>`;
@@ -526,11 +987,13 @@ function renderHome() {
   const series = catalog.filter((item) => item.type === 'serie');
   const documentaries = catalog.filter((item) => item.type === 'documentario');
   const fresh = catalog.filter((item) => item.new);
+  const drive = catalog.filter((item) => item.drive);
   mainContent.innerHTML = `
     <div class="content-view">
       ${homeHero()}
       <div class="content-sections">
         ${sectionRow('Continue assistindo', continueItems, { subtitle: 'Retome de onde parou' })}
+        ${sectionRow('Do seu Google Drive', drive, { subtitle: 'Filmes e séries da sua pasta conectada' })}
         ${sectionRow('Em alta agora', trending, { subtitle: 'O que todo mundo está assistindo', link: { view: 'filmes' } })}
         ${sectionRow('Top 10 hoje', top, { top: true })}
         ${sectionRow('Originais NEXA', originals, { subtitle: 'Histórias exclusivas para assistir' })}
@@ -656,35 +1119,65 @@ function openDetails(id) {
 
 function renderEpisodes(item, seasonIndex) {
   const season = item.seasons[seasonIndex];
-  document.getElementById('episode-list').innerHTML = season.episodes.map((episode, index) => `
+  document.getElementById('episode-list').innerHTML = season.episodes.map((episode, index) => {
+    const episodeFile = season.episodeFiles?.[index];
+    const number = episodeFile?.number ?? index + 1;
+    const duration = episodeFile?.duration || `${28 + index * 3} min`;
+    const thumbnail = episodeFile?.thumbnail || item.backdrop;
+    return `
     <article class="episode-item">
       <div class="episode-image">
-        <img src="${item.backdrop}" alt="" loading="lazy">
+        <img src="${thumbnail}" alt="" loading="lazy">
         <button class="episode-play" type="button" data-action="play-episode" data-id="${item.id}" data-season="${seasonIndex}" data-episode="${index}" aria-label="Assistir ${escapeHtml(episode)}">${icon('play')}</button>
       </div>
       <div class="episode-copy">
-        <div class="episode-top"><strong>${index + 1}. ${escapeHtml(episode)}</strong><span>${28 + index * 3} min</span></div>
+        <div class="episode-top"><strong>${number}. ${escapeHtml(episode)}</strong><span>${escapeHtml(duration)}</span></div>
         <p>${escapeHtml(item.description)} Uma nova decisão coloca os personagens diante das consequências de suas escolhas.</p>
       </div>
-    </article>`).join('');
+    </article>`;
+  }).join('');
 }
 
 function openPlayer(id, episodeIndex = null) {
   const item = getItem(id);
   if (!item) return;
   const fromDetails = detailsDialog.open;
-  state.activeVideo = { item, episodeIndex, fromDetails };
+  let resolvedEpisode = episodeIndex;
+  let resolvedSeason = state.activeSeason;
+  if (resolvedEpisode === null && item.seasons?.length && item.drive) {
+    const last = state.progress[item.id];
+    if (last && Number.isInteger(last.season) && Number.isInteger(last.episode)) {
+      resolvedSeason = last.season;
+      resolvedEpisode = last.episode;
+    } else {
+      resolvedSeason = 0;
+      resolvedEpisode = 0;
+    }
+  }
+  if (resolvedEpisode !== null && item.seasons?.length) {
+    if (!item.seasons[resolvedSeason]) resolvedSeason = 0;
+    const seasonEpisodes = item.seasons[resolvedSeason]?.episodes || [];
+    if (resolvedEpisode >= seasonEpisodes.length) resolvedEpisode = 0;
+  }
+  const season = item.seasons?.[resolvedSeason];
+  const episodeFile = resolvedEpisode !== null ? season?.episodeFiles?.[resolvedEpisode] : null;
+  const progressKey = resolvedEpisode !== null && item.drive
+    ? `${item.id}::s${resolvedSeason}e${resolvedEpisode}`
+    : item.id;
+  state.activeVideo = { item, episodeIndex: resolvedEpisode, seasonIndex: resolvedSeason, episodeFile, progressKey, fallbackTried: false, fromDetails };
+  if (resolvedEpisode !== null && item.seasons) state.activeSeason = resolvedSeason;
   videoPlayer.poster = item.backdrop;
-  videoPlayer.src = item.video;
+  videoPlayer.src = episodeFile?.video || item.video;
   document.getElementById('player-title').textContent = item.title;
-  document.getElementById('player-episode').textContent = episodeIndex !== null && item.seasons
-    ? `${item.seasons[state.activeSeason].name} • Episódio ${episodeIndex + 1}`
+  document.getElementById('player-episode').textContent = resolvedEpisode !== null && item.seasons
+    ? `${item.seasons[resolvedSeason].name} • Episódio ${episodeFile?.number ?? resolvedEpisode + 1}`
     : item.duration;
   document.getElementById('player-quality').textContent = state.quality;
-  const saved = state.progress[item.id];
+  const saved = state.progress[progressKey] || (progressKey !== item.id ? state.progress[item.id] : null);
   videoPlayer.addEventListener('loadedmetadata', function resume() {
     if (saved?.seconds && saved.seconds < videoPlayer.duration - 10) videoPlayer.currentTime = saved.seconds;
   }, { once: true });
+  if (episodeFile?.playable === false) showToast('Este formato pode não tocar no navegador. Prefira MP4 ou WebM.', 'error');
   if (detailsDialog.open) detailsDialog.close();
   playerDialog.showModal();
   document.body.classList.add('modal-open');
@@ -824,9 +1317,15 @@ function updatePlayerProgress() {
 
 function saveProgress() {
   if (!state.activeVideo || !Number.isFinite(videoPlayer.duration) || videoPlayer.duration <= 0) return;
-  const { item } = state.activeVideo;
+  const { item, seasonIndex, episodeIndex, progressKey } = state.activeVideo;
   const percent = Math.min(99, Math.max(1, (videoPlayer.currentTime / videoPlayer.duration) * 100));
-  state.progress[item.id] = { percent: Math.round(percent), seconds: Math.round(videoPlayer.currentTime) };
+  const entry = { percent: Math.round(percent), seconds: Math.round(videoPlayer.currentTime), updatedAt: Date.now() };
+  if (episodeIndex !== null && item.drive) {
+    entry.season = seasonIndex;
+    entry.episode = episodeIndex;
+  }
+  state.progress[progressKey || item.id] = entry;
+  if (episodeIndex !== null && item.drive) state.progress[item.id] = entry;
   storage.set('nexa-progress', state.progress);
 }
 
@@ -976,7 +1475,19 @@ document.getElementById('player-quality').addEventListener('click', () => {
   setQuality(state.quality === 'HD' ? '4K' : 'HD');
   showToast(`Qualidade alterada para ${state.quality}`, 'success');
 });
-videoPlayer.addEventListener('error', () => showToast('Não foi possível carregar o vídeo', 'error'));
+videoPlayer.addEventListener('error', () => {
+  const active = state.activeVideo;
+  const fileId = active?.episodeFile?.fileId || active?.item?.driveFileId;
+  if (!active || !fileId || active.fallbackTried) {
+    showToast('Não foi possível carregar o vídeo', 'error');
+    return;
+  }
+  active.fallbackTried = true;
+  videoPlayer.src = driveDownloadUrl(fileId);
+  videoPlayer.load();
+  if (state.autoplay) videoPlayer.play().catch(() => {});
+  showToast('Tentando um link alternativo do Drive...', 'success');
+});
 videoPlayer.addEventListener('play', () => setPlayerPlaying(true));
 videoPlayer.addEventListener('pause', () => setPlayerPlaying(false));
 videoPlayer.addEventListener('timeupdate', updatePlayerProgress);
@@ -1063,6 +1574,7 @@ function openSettings() {
   settingsQuality.value = state.quality;
   autoplaySwitch.setAttribute('aria-checked', String(state.autoplay));
   document.getElementById('settings-theme').textContent = document.body.classList.contains('light-theme') ? 'Tema escuro' : 'Tema claro';
+  updateDriveSettingsUI();
   settingsDialog.showModal();
   document.body.classList.add('modal-open');
 }
@@ -1071,6 +1583,15 @@ themeToggle.addEventListener('click', () => setTheme(!document.body.classList.co
 document.getElementById('settings-theme').addEventListener('click', () => setTheme(!document.body.classList.contains('light-theme')));
 autoplaySwitch.addEventListener('click', () => setAutoplay(!state.autoplay));
 settingsQuality.addEventListener('change', () => setQuality(settingsQuality.value));
+document.getElementById('drive-connect').addEventListener('click', connectDrive);
+document.getElementById('drive-disconnect').addEventListener('click', disconnectDrive);
+['drive-folder', 'drive-key'].forEach((id) => {
+  document.getElementById(id).addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    connectDrive();
+  });
+});
 document.getElementById('settings-close').addEventListener('click', () => settingsDialog.close());
 settingsDialog.addEventListener('close', () => {
   document.body.classList.remove('modal-open');
@@ -1204,6 +1725,7 @@ applyNotificationsRead(storage.get('nexa-notifications-read', false));
 document.getElementById('list-count').textContent = state.list.size;
 updateActiveNavigation();
 renderHome();
+restoreDriveLibrary();
 
 const deepLink = window.location.hash.match(/^#\/titulo\/([^/]+)$/);
 if (deepLink) {

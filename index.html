@@ -275,6 +275,23 @@
             </select>
           </div>
         </div>
+        <section class="drive-settings" aria-labelledby="drive-settings-title">
+          <p class="eyebrow">Sua biblioteca</p>
+          <h2 id="drive-settings-title">Google Drive</h2>
+          <p class="settings-intro">Conecte uma pasta pública com filmes e séries. O NEXA lê apenas os metadados e reproduz os arquivos diretamente do Drive.</p>
+          <label class="settings-field" for="drive-folder">Link ou ID da pasta
+            <input id="drive-folder" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://drive.google.com/drive/folders/...">
+          </label>
+          <label class="settings-field" for="drive-key">Chave da API do Google
+            <input id="drive-key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza...">
+          </label>
+          <div class="drive-actions">
+            <button class="button button-red" id="drive-connect" type="button">Conectar pasta</button>
+            <button class="button button-secondary" id="drive-disconnect" type="button" hidden>Desconectar</button>
+          </div>
+          <p class="settings-note" id="drive-status" role="status">Nenhuma pasta conectada.</p>
+          <p class="settings-note">A chave fica salva somente neste navegador. Restrinja-a aos domínios do NEXA no Google Cloud.</p>
+        </section>
       </div>
     </div>
   </dialog>
