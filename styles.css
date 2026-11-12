@@ -1777,6 +1777,11 @@ body.light-theme .poster-open:focus-visible {
   transform: scale(1.06);
 }
 
+.player-icon[hidden],
+.button[hidden] {
+  display: none;
+}
+
 .player-center-play {
   position: absolute;
   z-index: 3;

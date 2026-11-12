@@ -1170,10 +1170,51 @@ function renderEpisodes(item, seasonIndex) {
   }).join('');
 }
 
-function openPlayer(id, episodeIndex = null) {
+function nextEpisodeTarget(active = state.activeVideo) {
+  if (!active || active.episodeIndex === null || !active.item.seasons?.length) return null;
+  const { item, seasonIndex, episodeIndex } = active;
+  let nextSeasonIndex = seasonIndex;
+  let nextEpisodeIndex = episodeIndex + 1;
+  const currentSeason = item.seasons[seasonIndex];
+  const seasonLength = currentSeason?.episodes?.length || currentSeason?.episodeFiles?.length || 0;
+  if (nextEpisodeIndex >= seasonLength) {
+    nextSeasonIndex = seasonIndex + 1;
+    nextEpisodeIndex = 0;
+  }
+  const nextSeason = item.seasons[nextSeasonIndex];
+  if (!nextSeason || nextEpisodeIndex >= (nextSeason.episodes?.length || 0)) return null;
+  return { seasonIndex: nextSeasonIndex, episodeIndex: nextEpisodeIndex };
+}
+
+function updatePlayerNextButton() {
+  const button = document.getElementById('player-next');
+  if (button) button.hidden = !nextEpisodeTarget();
+}
+
+function playNextEpisode(target = nextEpisodeTarget()) {
+  const active = state.activeVideo;
+  if (!active || !target) return false;
+  const { item } = active;
+  const nextSeason = item.seasons?.[target.seasonIndex];
+  const nextFile = nextSeason?.episodeFiles?.[target.episodeIndex];
+  state.activeSeason = target.seasonIndex;
+  openPlayer(item.id, target.episodeIndex, { fromDetails: active.fromDetails, autoplay: true });
+  state.progress[item.id] = {
+    percent: 1,
+    seconds: 0,
+    season: target.seasonIndex,
+    episode: target.episodeIndex,
+    updatedAt: Date.now()
+  };
+  storage.set('nexa-progress', state.progress);
+  if (nextFile?.playable === false) showToast('O próximo episódio pode não tocar neste navegador.', 'error');
+  return true;
+}
+
+function openPlayer(id, episodeIndex = null, options = {}) {
   const item = getItem(id);
   if (!item) return;
-  const fromDetails = detailsDialog.open;
+  const fromDetails = options.fromDetails ?? detailsDialog.open;
   let resolvedEpisode = episodeIndex;
   let resolvedSeason = state.activeSeason;
   if (resolvedEpisode === null && item.seasons?.length && item.drive) {
@@ -1205,15 +1246,21 @@ function openPlayer(id, episodeIndex = null) {
     ? `${item.seasons[resolvedSeason].name} • Episódio ${episodeFile?.number ?? resolvedEpisode + 1}`
     : item.duration;
   document.getElementById('player-quality').textContent = state.quality;
-  const saved = state.progress[progressKey] || (progressKey !== item.id ? state.progress[item.id] : null);
+  const saved = state.progress[progressKey] || null;
+  const activeVideo = state.activeVideo;
   videoPlayer.addEventListener('loadedmetadata', function resume() {
+    if (state.activeVideo !== activeVideo) return;
     if (saved?.seconds && saved.seconds < videoPlayer.duration - 10) videoPlayer.currentTime = saved.seconds;
   }, { once: true });
   if (episodeFile?.playable === false) showToast('Este formato pode não tocar no navegador. Prefira MP4 ou WebM.', 'error');
   if (detailsDialog.open) detailsDialog.close();
-  playerDialog.showModal();
-  document.body.classList.add('modal-open');
-  if (state.autoplay) {
+  if (!playerDialog.open) {
+    playerDialog.showModal();
+    document.body.classList.add('modal-open');
+  }
+  updatePlayerNextButton();
+  const shouldAutoplay = options.autoplay ?? state.autoplay;
+  if (shouldAutoplay) {
     const promise = videoPlayer.play();
     if (promise) promise.catch(() => showToast('Clique em reproduzir para iniciar o vídeo', 'success'));
   }
@@ -1503,6 +1550,7 @@ document.getElementById('player-volume').addEventListener('input', (event) => {
   videoPlayer.volume = Number(event.target.value);
   videoPlayer.muted = false;
 });
+document.getElementById('player-next').addEventListener('click', () => playNextEpisode());
 document.getElementById('player-quality').addEventListener('click', () => {
   setQuality(state.quality === 'HD' ? '4K' : 'HD');
   showToast(`Qualidade alterada para ${state.quality}`, 'success');
@@ -1524,7 +1572,21 @@ videoPlayer.addEventListener('play', () => setPlayerPlaying(true));
 videoPlayer.addEventListener('pause', () => setPlayerPlaying(false));
 videoPlayer.addEventListener('timeupdate', updatePlayerProgress);
 videoPlayer.addEventListener('loadedmetadata', updatePlayerProgress);
-videoPlayer.addEventListener('ended', saveProgress);
+videoPlayer.addEventListener('ended', () => {
+  saveProgress();
+  const active = state.activeVideo;
+  if (!active || active.episodeIndex === null || !active.item.seasons?.length) return;
+  const target = nextEpisodeTarget(active);
+  if (!target) {
+    showToast('Você chegou ao último episódio disponível.', 'success');
+    return;
+  }
+  if (state.autoplay) {
+    playNextEpisode(target);
+  } else {
+    showToast('Próximo episódio disponível. Use o botão de próximo episódio no player.', 'success');
+  }
+});
 document.getElementById('player-shell').addEventListener('mousemove', scheduleControlsHide);
 document.getElementById('player-shell').addEventListener('mouseleave', () => {
   if (!videoPlayer.paused) document.getElementById('player-shell').classList.add('controls-hidden');
