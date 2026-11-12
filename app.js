@@ -486,17 +486,34 @@ function parseEpisodeInfo(name) {
   return { season: null, episode: null, explicit: false };
 }
 
+function parseLooseEpisodeNumber(name) {
+  const strict = parseEpisodeInfo(name);
+  if (strict.episode !== null) return strict.episode;
+  const text = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._]+/g, ' ');
+  const matches = text.matchAll(/(?:^|[-–—\s(])(\d{1,3})(?=\s|[-–—.)\]]|$)/g);
+  for (const match of matches) {
+    const number = Number(match[1]);
+    if (number < 1) continue;
+    if (number >= 1900 && number <= 2099) continue;
+    if ([264, 265, 480, 576, 720, 1080, 2160].includes(number)) continue;
+    return number;
+  }
+  return null;
+}
+
 function cleanEpisodeTitle(raw, episodeNumber) {
   const base = splitDriveTitle(raw).title;
-  const title = base
+  let title = base
     .replace(/\b(?:s|t)\d{1,2}\s*[\s-]*e\d{1,3}\b/ig, ' ')
     .replace(/\b\d{1,2}x\d{1,3}\b/ig, ' ')
     .replace(/\b(?:epis[oó]dio|episode|ep|cap[ií]tulo)\s*\d{1,3}\b/ig, ' ')
     .replace(/\b(?:t|s)\d{1,2}\b/ig, ' ')
     .replace(/\bE\d{1,3}\b/ig, ' ')
-    .replace(/^\s*\d{1,3}\s*[-–—.)]\s*/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/^\s*\d{1,3}\s*[-–—.)]\s*/, ' ');
+  if (episodeNumber !== null && episodeNumber !== undefined) {
+    title = title.replace(new RegExp(`(?:^|[-–—\\s])0*${episodeNumber}(?=\\s|[-–—.)]|$)`), ' ');
+  }
+  title = title.replace(/\s+/g, ' ').trim();
   return title || `Episódio ${episodeNumber || ''}`.trim();
 }
 
@@ -544,6 +561,7 @@ function buildDriveCatalog(files, rootName, apiKey) {
   const images = files.filter(isDriveImage);
   const movieItems = [];
   const seriesMap = new Map();
+  const rootIsSeries = DRIVE_SERIES_HINT.test(rootName || '');
 
   videos.forEach((file) => {
     const ancestors = file.ancestors || [];
@@ -554,7 +572,7 @@ function buildDriveCatalog(files, rootName, apiKey) {
     });
     const episodeInfo = parseEpisodeInfo(file.name);
     const pathText = [...names, file.name].join('/');
-    const isSeries = DRIVE_SERIES_HINT.test(pathText) || seasonFolderIndex >= 0 || episodeInfo.explicit;
+    const isSeries = rootIsSeries || DRIVE_SERIES_HINT.test(pathText) || seasonFolderIndex >= 0 || episodeInfo.explicit;
 
     if (!isSeries) {
       const parent = ancestors[ancestors.length - 1] || null;
@@ -612,7 +630,7 @@ function buildDriveCatalog(files, rootName, apiKey) {
     }
     const entry = seriesMap.get(key);
     const seasonNumber = episodeInfo.season ?? (seasonFolderIndex >= 0 ? parseSeasonNumber(names[seasonFolderIndex]) : null) ?? 1;
-    const episodeNumber = episodeInfo.episode;
+    const episodeNumber = episodeInfo.episode ?? parseLooseEpisodeNumber(file.name);
     if (!entry.seasons.has(seasonNumber)) entry.seasons.set(seasonNumber, []);
     entry.seasons.get(seasonNumber).push({ file, episodeNumber, title: null });
   });
@@ -747,6 +765,7 @@ async function walkDriveFolder(folderId, ancestors, account, config) {
 
 function driveErrorMessage(error) {
   if (!navigator.onLine) return 'Você está offline. Conecte-se para atualizar a pasta do Drive.';
+  if (/expired|invalid/i.test(error?.message || '')) return 'A chave da API expirou ou é inválida. Gere uma nova chave no Google Cloud.';
   if (error?.status === 400 || error?.status === 403) return 'A chave da API foi recusada. Confira a chave e as restrições de domínio no Google Cloud.';
   if (error?.status === 404) return 'Pasta não encontrada. Verifique se o link está correto e se a pasta está pública.';
   if (error?.status === 429) return 'O limite de consultas do Google foi atingido. Tente novamente mais tarde.';
