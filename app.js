@@ -927,6 +927,7 @@ function filteredCatalog(view = state.view) {
   let items = catalog.slice();
   if (view === 'filmes') items = items.filter((item) => item.type === 'filme');
   if (view === 'series') items = items.filter((item) => item.type === 'serie');
+  if (view === 'filmes' || view === 'series') items.sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
   if (view === 'originais') items = items.filter((item) => item.original);
   if (view === 'novidades') items = items.filter((item) => item.new);
   if (view === 'lista') items = items.filter((item) => state.list.has(item.id));
@@ -1011,8 +1012,8 @@ function renderHome() {
   const trending = catalog.filter((item) => item.trending);
   const top = catalog.filter((item) => item.top).slice(0, 10);
   const originals = catalog.filter((item) => item.original);
-  const movies = catalog.filter((item) => item.type === 'filme');
-  const series = catalog.filter((item) => item.type === 'serie');
+  const movies = catalog.filter((item) => item.type === 'filme').sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
+  const series = catalog.filter((item) => item.type === 'serie').sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
   const documentaries = catalog.filter((item) => item.type === 'documentario');
   const fresh = catalog.filter((item) => item.new);
   const drive = catalog.filter((item) => item.drive);
