@@ -1,9 +1,9 @@
-const CACHE_NAME = 'nexa-shell-v16';
+const CACHE_NAME = 'nexa-shell-v17';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=16',
-  './app.js?v=16',
+  './styles.css?v=17',
+  './app.js?v=17',
   './manifest.json',
   './icons/icon-180.png',
   './icons/icon-192.png',

@@ -1142,6 +1142,23 @@ def main() -> None:
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     log(f"NEXA local em http://{args.host}:{args.port}")
+    if args.host == "0.0.0.0":
+        import socket
+        addresses = set()
+        try:
+            addresses.update(socket.gethostbyname_ex(socket.gethostname())[2])
+        except OSError:
+            pass
+        try:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            probe.connect(("8.8.8.8", 80))
+            addresses.add(probe.getsockname()[0])
+            probe.close()
+        except OSError:
+            pass
+        for address in sorted(addresses):
+            if not address.startswith("127."):
+                log(f"acesso no Chrome: http://{address}:{args.port}")
     log(f"HD: {_config['root']}")
     log(f"ffmpeg: {'disponível' if ffmpeg_available() else 'indisponível'}")
     try:

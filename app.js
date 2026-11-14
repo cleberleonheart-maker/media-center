@@ -1103,8 +1103,7 @@ function updateLocalNavCount() {
 function localServerBase() {
   const configured = String(storage.get('nexa-local-server', '') || '').trim();
   if (configured) return configured.replace(/\/+$/, '');
-  const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
+  if (window.location.protocol === 'http:') {
     return `${window.location.protocol}//${window.location.host}`;
   }
   return 'http://127.0.0.1:8090';
