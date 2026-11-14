@@ -1109,6 +1109,13 @@ function localServerBase() {
   return 'http://127.0.0.1:8090';
 }
 
+function localFetchSignal(timeout = 30000) {
+  if (typeof AbortController === 'undefined') return undefined;
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), timeout);
+  return controller.signal;
+}
+
 function localApi(path) {
   return `${localServerBase()}${path}`;
 }
@@ -1871,7 +1878,7 @@ function localSubtitleTarget() {
 
 function updateSubtitleActionButtons() {
   const target = localSubtitleTarget();
-  subtitleSearchOpen.hidden = !target;
+  subtitleSearchOpen.hidden = false;
   const activeSubtitle = collectSubtitles().find((candidate) => candidate.id === activeSubtitleId);
   subtitleSaveHd.hidden = !(target && activeSubtitle && activeSubtitle.source === 'local');
 }
@@ -2397,12 +2404,19 @@ subtitleSaveHd.addEventListener('click', saveActiveSubtitleToHd);
 
 subtitleSearchOpen.addEventListener('click', () => {
   const target = localSubtitleTarget();
-  if (!target) return;
+  const item = state.activeVideo?.item;
+  const title = target?.title || item?.title || '';
+  if (!title) {
+    showToast('Abra um filme ou episódio para buscar legendas.', 'error');
+    return;
+  }
   closeSubtitleMenu();
-  subtitleSearchInput.value = target.title || '';
+  subtitleSearchInput.value = title.replace(/\(\d{4}\)/, '').trim();
   subtitleResults.innerHTML = '';
-  document.getElementById('subtitle-search-hint').textContent = `Buscando legendas para “${target.title}”. Escolha uma para baixar e salvar ao lado do filme no HD.`;
-  subtitleSearchDialog.showModal();
+  document.getElementById('subtitle-search-hint').textContent = target
+    ? `Buscando legendas para “${title}”. Escolha uma para baixar e salvar ao lado do filme no HD.`
+    : `Buscando legendas para “${title}”. Escolha uma para usar agora (para salvar no HD, abra o filme do HD local).`;
+  if (!subtitleSearchDialog.open) subtitleSearchDialog.showModal();
   document.body.classList.add('modal-open');
   window.setTimeout(() => subtitleSearchInput.focus(), 60);
 });
@@ -2490,11 +2504,12 @@ document.getElementById('subtitle-search-run').addEventListener('click', async (
   }
   subtitleResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OpenSubtitles...</li>';
   const params = new URLSearchParams({ title });
-  if (target?.year) params.set('year', String(target.year));
+  const year = target?.year || state.activeVideo?.item?.year;
+  if (year) params.set('year', String(year));
   if (target?.rootKey) params.set('root', target.rootKey);
   if (target?.path) params.set('path', target.path);
   try {
-    const response = await fetch(localApi(`/api/local/subtitle/search?${params.toString()}`), { cache: 'no-store' });
+    const response = await fetch(localApi(`/api/local/subtitle/search?${params.toString()}`), { cache: 'no-store', signal: localFetchSignal() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     const results = Array.isArray(data.results) ? data.results : [];
@@ -2519,7 +2534,6 @@ subtitleResults.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-subtitle-download]');
   if (!button) return;
   const target = localSubtitleTarget();
-  if (!target) return;
   button.disabled = true;
   try {
     const response = await fetch(localApi('/api/local/subtitle/download'), {
@@ -2529,9 +2543,9 @@ subtitleResults.addEventListener('click', async (event) => {
         subtitleId: button.dataset.subtitleDownload,
         link: button.dataset.link || '',
         lang: button.dataset.lang || 'pt',
-        root: target.rootKey,
-        path: target.path
-      })
+        ...(target ? { root: target.rootKey, path: target.path } : {})
+      }),
+      signal: localFetchSignal()
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -2539,17 +2553,24 @@ subtitleResults.addEventListener('click', async (event) => {
       id: `local-sub-${Date.now()}`,
       label: 'Legenda (baixada)',
       lang: button.dataset.lang || 'pt',
-      source: 'local-server',
-      name: data.name,
-      url: data.url
+      source: data.saved ? 'local-server' : 'local',
+      name: data.name || 'legenda',
+      ...(data.saved ? { url: data.url } : { text: data.content })
     };
-    const owner = state.activeVideo.episodeFile || state.activeVideo.item;
-    const list = owner.subtitles || (owner.subtitles = []);
-    if (!list.some((candidate) => candidate.url === subtitle.url)) list.push(subtitle);
+    if (data.saved) {
+      const owner = state.activeVideo.episodeFile || state.activeVideo.item;
+      const list = owner.subtitles || (owner.subtitles = []);
+      if (!list.some((candidate) => candidate.url === subtitle.url)) list.push(subtitle);
+    } else {
+      const key = currentPlaybackKey();
+      const stored = subtitleStore.get(key) || [];
+      stored.push(subtitle);
+      subtitleStore.set(key, stored);
+    }
     subtitleSearchDialog.close();
     renderSubtitleMenu();
     await activateSubtitle(subtitle.id);
-    showToast(`Legenda baixada e salva no HD: ${data.name}`, 'success');
+    showToast(data.saved ? `Legenda baixada e salva no HD: ${data.name}` : 'Legenda baixada e aplicada.', 'success');
   } catch (error) {
     showToast(error.message || 'Não foi possível baixar a legenda.', 'error');
     button.disabled = false;

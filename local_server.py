@@ -769,15 +769,12 @@ class Handler(BaseHTTPRequestHandler):
         if not link.startswith("https://dl.opensubtitles.org/"):
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": "link de legenda inválido"})
             return
-        if not root_key or not rel:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"error": "informe o filme"})
-            return
         library = current_library()
-        resolved = resolve_local_rel(library, root_key, rel)
-        if not resolved or not os.path.isfile(resolved[0]):
+        resolved = resolve_local_rel(library, root_key, rel) if root_key and rel else None
+        if root_key and rel and (not resolved or not os.path.isfile(resolved[0])):
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "filme não encontrado no HD"})
             return
-        media_path, base = resolved
+        media_path, base = resolved if resolved else (None, None)
         try:
             request = urllib.request.Request(link, headers=opensubtitles_headers())
             with urllib.request.urlopen(request, timeout=40) as response:
@@ -788,6 +785,9 @@ class Handler(BaseHTTPRequestHandler):
         content = decode_subtitle_bytes(raw)
         if not content.strip():
             self.send_json(HTTPStatus.BAD_GATEWAY, {"error": "OpenSubtitles devolveu um arquivo vazio"})
+            return
+        if not media_path:
+            self.send_json(HTTPStatus.OK, {"saved": False, "content": content, "name": "legenda"})
             return
         try:
             target, name = save_sidecar(media_path, content, "pob" if lang in ("pob", "pt", "pt-br") else lang)
