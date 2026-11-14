@@ -1,9 +1,9 @@
-const CACHE_NAME = 'nexa-shell-v9';
+const CACHE_NAME = 'nexa-shell-v16';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=9',
-  './app.js?v=9',
+  './styles.css?v=16',
+  './app.js?v=16',
   './manifest.json',
   './icons/icon-180.png',
   './icons/icon-192.png',
@@ -33,6 +33,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  if (url.pathname.startsWith('/api/local/') || request.headers.has('range')) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(

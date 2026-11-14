@@ -13,7 +13,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e50914'/%3E%3Cpath d='M20 17h8v30h-8zm16 0h8v30h-8z' fill='white'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -22,6 +22,7 @@
     <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></symbol>
     <symbol id="icon-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4m10 0h4M3 15h4m10 0h4"/></symbol>
     <symbol id="icon-tv" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m8 2 4 3 4-3m-7 18h6"/></symbol>
+    <symbol id="icon-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm11-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></symbol>
     <symbol id="icon-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4Z"/></symbol>
     <symbol id="icon-sparkle" viewBox="0 0 24 24"><path d="m12 2 1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8ZM19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9Z"/></symbol>
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
@@ -40,6 +41,10 @@
     <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
     <symbol id="icon-thumbs-up" viewBox="0 0 24 24"><path d="M7 22H3V10h4m0 12h9.5a2 2 0 0 0 2-1.6l1.2-7A2 2 0 0 0 17.7 11H14l.7-3.2A3 3 0 0 0 11.8 5L7 10"/></symbol>
     <symbol id="icon-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4m-6.8 7 6.8 4"/></symbol>
+    <symbol id="icon-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="icon-cc" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10.5 10a2.5 2.5 0 1 0 0 4m7-4a2.5 2.5 0 1 0 0 4"/></symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 21V9m0 0 4.5 4.5M12 9l-4.5 4.5M4 4h16"/></symbol>
     <symbol id="icon-logout" viewBox="0 0 24 24"><path d="M10 4H4v16h6m5-4 4-4-4-4m4 4H9"/></symbol>
     <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
     <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.5 15.5A9 9 0 0 1 8.5 3.5a9 9 0 1 0 12 12Z"/></symbol>
@@ -77,6 +82,9 @@
         <button class="nav-item" data-view="series">
           <svg><use href="#icon-tv"></use></svg><span>Séries</span>
         </button>
+        <button class="nav-item" data-view="musica">
+          <svg><use href="#icon-music"></use></svg><span>Música</span>
+        </button>
         <button class="nav-item" data-view="lista">
           <svg><use href="#icon-bookmark"></use></svg><span>Minha lista</span>
           <span class="nav-count" id="list-count">0</span>
@@ -84,6 +92,10 @@
         <button class="nav-item" id="drive-nav" aria-haspopup="dialog">
           <svg><use href="#icon-download"></use></svg><span>Google Drive</span>
           <span class="nav-count" id="drive-count" hidden>0</span>
+        </button>
+        <button class="nav-item" id="local-nav" aria-haspopup="dialog">
+          <svg><use href="#icon-download"></use></svg><span>HD local</span>
+          <span class="nav-count" id="local-count" hidden>0</span>
         </button>
 
         <p class="nav-label nav-label-spaced">Descobrir</p>
@@ -106,8 +118,8 @@
           <span>Tema claro</span>
         </button>
         <button class="profile-card" id="profile-button" aria-expanded="false">
-          <span class="avatar">CL</span>
-          <span class="profile-copy"><strong>Cleber Leonheart</strong><small>Perfil principal</small></span>
+          <span class="avatar" id="profile-avatar">CL</span>
+          <span class="profile-copy"><strong id="profile-name">Cleber Leonheart</strong><small id="profile-subtitle">Perfil principal</small></span>
           <svg><use href="#icon-chevron"></use></svg>
         </button>
       </div>
@@ -124,8 +136,8 @@
 
         <form class="search-box" id="search-form" role="search">
           <svg><use href="#icon-search"></use></svg>
-          <input id="search-input" type="search" placeholder="Títulos, gêneros, pessoas..." autocomplete="off" aria-label="Buscar no catálogo">
-          <kbd>⌘ K</kbd>
+          <input id="search-input" type="search" placeholder="Títulos, gêneros, pessoas..." autocomplete="off" aria-label="Buscar no catálogo" aria-keyshortcuts="/ Control+K Meta+K">
+          <kbd>⌘ K ou /</kbd>
           <button class="search-clear" id="search-clear" type="button" aria-label="Limpar busca">
             <svg><use href="#icon-close"></use></svg>
           </button>
@@ -153,9 +165,11 @@
 
         <div class="popover profile-popover" id="profile-popover" hidden>
           <div class="popover-profile">
-            <span class="avatar large">CL</span>
-            <span><strong>Cleber Leonheart</strong><small>cleber@nexa.tv</small></span>
+            <span class="avatar large" id="popover-avatar">CL</span>
+            <span><strong id="popover-name">Cleber Leonheart</strong><small id="popover-subtitle">Perfil principal</small></span>
           </div>
+          <div class="profile-switch-list" id="profile-switch-list" aria-label="Trocar de perfil"></div>
+          <button class="popover-action" id="profile-manage"><svg><use href="#icon-user"></use></svg> Gerenciar perfis</button>
           <button class="popover-action" id="profile-preferences"><svg><use href="#icon-settings"></use></svg> Preferências</button>
           <button class="popover-action" id="profile-logout"><svg><use href="#icon-logout"></use></svg> Sair</button>
         </div>
@@ -165,10 +179,18 @@
     </div>
   </div>
 
+  <div class="music-player" id="music-player-bar" hidden>
+    <img id="music-cover" alt="">
+    <div class="music-player-copy"><strong id="music-title">Música</strong><small id="music-artist"></small></div>
+    <audio id="music-audio" controls preload="metadata"></audio>
+    <button class="icon-button music-close" id="music-close" type="button" aria-label="Fechar player de música"><svg><use href="#icon-close"></use></svg></button>
+  </div>
+
   <nav class="mobile-nav" aria-label="Navegação móvel">
     <button class="active" data-view="home"><svg><use href="#icon-home"></use></svg><span>Início</span></button>
     <button data-view="filmes"><svg><use href="#icon-film"></use></svg><span>Filmes</span></button>
     <button data-view="series"><svg><use href="#icon-tv"></use></svg><span>Séries</span></button>
+    <button data-view="musica"><svg><use href="#icon-music"></use></svg><span>Música</span></button>
     <button data-view="lista"><svg><use href="#icon-bookmark"></use></svg><span>Lista</span></button>
   </nav>
 
@@ -188,6 +210,7 @@
             <button class="button button-secondary" id="detail-list"><svg><use href="#icon-plus"></use></svg><span>Adicionar à lista</span></button>
             <button class="button button-icon" id="detail-like" aria-label="Gostei"><svg><use href="#icon-thumbs-up"></use></svg></button>
             <button class="button button-icon" id="detail-share" aria-label="Compartilhar"><svg><use href="#icon-share"></use></svg></button>
+            <button class="button button-secondary" id="detail-omdb" type="button" hidden>Identificar filme</button>
           </div>
           <p class="detail-description" id="detail-description"></p>
           <div class="detail-facts">
@@ -237,19 +260,28 @@
           <input id="player-progress" type="range" min="0" max="100" value="0" step="0.1" aria-label="Progresso do vídeo">
         </div>
         <div class="control-bar">
-          <button class="player-icon" id="player-play" aria-label="Reproduzir"><svg class="play-icon"><use href="#icon-play"></use></svg><svg class="pause-icon"><use href="#icon-pause"></use></svg></button>
-          <button class="player-icon" id="player-back" aria-label="Voltar 10 segundos"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
-          <button class="player-icon" id="player-forward" aria-label="Avançar 10 segundos"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
+          <button class="player-icon" id="player-play" aria-label="Reproduzir" aria-keyshortcuts="Space K" title="Reproduzir ou pausar (Espaço ou K)"><svg class="play-icon"><use href="#icon-play"></use></svg><svg class="pause-icon"><use href="#icon-pause"></use></svg></button>
+          <button class="player-icon" id="player-back" aria-label="Voltar 10 segundos" aria-keyshortcuts="J" title="Voltar 10s (J)"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
+          <button class="player-icon" id="player-forward" aria-label="Avançar 10 segundos" aria-keyshortcuts="L" title="Avançar 10s (L)"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
           <div class="volume-control">
-            <button class="player-icon" id="player-mute" aria-label="Silenciar"><svg class="volume-on"><use href="#icon-volume"></use></svg><svg class="volume-off"><use href="#icon-muted"></use></svg></button>
+            <button class="player-icon" id="player-mute" aria-label="Silenciar" aria-keyshortcuts="M" title="Silenciar (M)"><svg class="volume-on"><use href="#icon-volume"></use></svg><svg class="volume-off"><use href="#icon-muted"></use></svg></button>
             <input id="player-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume">
           </div>
           <span class="player-time"><span id="player-current">0:00</span> / <span id="player-duration">0:00</span></span>
           <span class="control-spacer"></span>
           <button class="player-icon" id="player-next" aria-label="Próximo episódio" hidden><svg><use href="#icon-chevron"></use></svg></button>
+          <button class="player-icon subtitle-button" id="player-subtitles" aria-label="Legendas" aria-expanded="false" aria-keyshortcuts="C" title="Legendas (C)"><svg><use href="#icon-cc"></use></svg></button>
           <button class="quality-button" id="player-quality">HD</button>
-          <button class="player-icon" id="player-fullscreen" aria-label="Tela cheia"><svg><use href="#icon-expand"></use></svg></button>
+          <button class="player-icon" id="player-fullscreen" aria-label="Tela cheia" aria-keyshortcuts="F" title="Tela cheia (F)"><svg><use href="#icon-expand"></use></svg></button>
         </div>
+      </div>
+      <div class="subtitle-menu" id="subtitle-menu" role="menu" aria-label="Legendas" hidden>
+        <div class="subtitle-menu-head"><strong>Legendas</strong><button id="subtitle-close" type="button" aria-label="Fechar legendas"><svg><use href="#icon-close"></use></svg></button></div>
+        <div class="subtitle-menu-list" id="subtitle-menu-list"></div>
+        <button class="subtitle-upload" id="subtitle-upload" type="button"><svg><use href="#icon-upload"></use></svg><span>Carregar .srt ou .vtt</span></button>
+        <button class="subtitle-upload" id="subtitle-search-open" type="button" hidden><svg><use href="#icon-search"></use></svg><span>Buscar legendas online</span></button>
+        <button class="subtitle-upload" id="subtitle-save-hd" type="button" hidden><svg><use href="#icon-download"></use></svg><span>Salvar legenda no HD</span></button>
+        <input id="subtitle-file" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" hidden>
       </div>
     </div>
   </dialog>
@@ -297,12 +329,149 @@
           <p class="settings-note" id="drive-status" role="status">Nenhuma pasta conectada.</p>
           <p class="settings-note">A chave fica salva somente neste navegador. Restrinja-a aos domínios do NEXA no Google Cloud.</p>
         </section>
+        <section class="drive-settings local-settings" aria-labelledby="local-settings-title">
+          <p class="eyebrow">Sua biblioteca</p>
+          <h2 id="local-settings-title">HD local</h2>
+          <p class="settings-intro">Leia filmes, séries e músicas do HD externo pelo servidor local do NEXA. O servidor precisa estar rodando em <code>http://localhost:8090</code>.</p>
+          <label class="settings-field" for="local-root">Pasta do HD
+            <input id="local-root" type="text" autocomplete="off" spellcheck="false" placeholder="/mnt/chromeos/removable/UNTITLED">
+          </label>
+          <label class="settings-field" for="local-server">Endereço do servidor local
+            <input id="local-server" type="text" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8090">
+          </label>
+          <p class="settings-note">Use o NEXA no GitHub Pages? Rode <code>python3 local_server.py</code> neste computador e mantenha o endereço acima; o site lê o HD por ele.</p>
+          <div class="drive-actions">
+            <button class="button button-red" id="local-scan" type="button">Escanear HD</button>
+            <button class="button button-secondary" id="local-omdb-enrich" type="button" hidden>Atualizar metadados</button>
+            <button class="button button-secondary" id="local-clear" type="button" hidden>Remover do NEXA</button>
+          </div>
+          <p class="settings-note" id="local-status" role="status">Servidor local não conectado.</p>
+          <p class="settings-note">Dica: inicie com <code>python3 local_server.py</code> e abra o NEXA pelo endereço informado no terminal.</p>
+          <p class="eyebrow">Legendas online</p>
+          <p class="settings-intro">Busque legendas no OpenSubtitles. A chave da API e o login ficam salvos apenas no servidor local (arquivo <code>.data/local.json</code>).</p>
+          <label class="settings-field" for="subtitle-api-key">Chave da API
+            <input id="subtitle-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Api-Key do OpenSubtitles">
+          </label>
+          <label class="settings-field" for="subtitle-user">Usuário (opcional)
+            <input id="subtitle-user" type="text" autocomplete="off" spellcheck="false" placeholder="seu usuário">
+          </label>
+          <label class="settings-field" for="subtitle-password">Senha (opcional)
+            <input id="subtitle-password" type="password" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="drive-actions">
+            <button class="button button-secondary" id="subtitle-settings-save" type="button">Salvar chaves</button>
+          </div>
+          <p class="settings-note" id="subtitle-settings-status" role="status">Busca online desativada até informar a chave da API.</p>
+          <p class="eyebrow">Metadados dos filmes</p>
+          <p class="settings-intro">Use a API do OMDb para trazer pôsteres, ano, sinopse e elenco reais dos filmes do HD (inclusive de legendas online).</p>
+          <label class="settings-field" for="omdb-api-key">Chave da API
+            <input id="omdb-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Chave do OMDb">
+          </label>
+          <div class="drive-actions">
+            <button class="button button-secondary" id="omdb-settings-save" type="button">Salvar chave</button>
+          </div>
+          <p class="settings-note" id="omdb-settings-status" role="status">Metadados externos desativados até informar a chave da API.</p>
+        </section>
       </div>
     </div>
   </dialog>
 
+  <dialog class="details-dialog subtitle-search-dialog" id="omdb-dialog" aria-labelledby="omdb-dialog-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close" id="omdb-dialog-close" aria-label="Fechar identificação">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="settings-content">
+        <p class="eyebrow">OMDb</p>
+        <h1 id="omdb-dialog-title">Identificar filme</h1>
+        <p class="settings-intro">Escolha qual filme do catálogo do OMDb corresponde ao arquivo do HD. A escolha fica salva no servidor.</p>
+        <label class="settings-field" for="omdb-dialog-query">Busca
+          <input id="omdb-dialog-query" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="drive-actions">
+          <button class="button button-red" id="omdb-dialog-run" type="button">Buscar</button>
+        </div>
+        <ul class="subtitle-results" id="omdb-results"></ul>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="details-dialog subtitle-search-dialog" id="subtitle-search-dialog" aria-labelledby="subtitle-search-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close" id="subtitle-search-close" aria-label="Fechar busca de legendas">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="settings-content">
+        <p class="eyebrow">OpenSubtitles</p>
+        <h1 id="subtitle-search-title">Buscar legendas</h1>
+        <p class="settings-intro" id="subtitle-search-hint">Escolha uma legenda para baixar e salvar ao lado do filme no HD.</p>
+        <label class="settings-field" for="subtitle-search-query">Título
+          <input id="subtitle-search-query" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="drive-actions">
+          <button class="button button-red" id="subtitle-search-run" type="button">Buscar</button>
+        </div>
+        <ul class="subtitle-results" id="subtitle-results"></ul>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="details-dialog profiles-dialog" id="profiles-dialog" aria-labelledby="profiles-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close" id="profiles-close" aria-label="Fechar gerenciamento de perfis">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="settings-content">
+        <p class="eyebrow">Sua conta</p>
+        <h1 id="profiles-title">Perfis</h1>
+        <p class="settings-intro">Crie perfis separados para cada pessoa. Listas, curtidas e progresso ficam salvos por perfil neste navegador.</p>
+        <div class="profiles-list" id="profiles-manager-list"></div>
+        <form class="profile-form" id="profile-form" novalidate>
+          <h2 id="profile-form-title">Novo perfil</h2>
+          <label class="settings-field" for="profile-name-input">Nome do perfil
+            <input id="profile-name-input" type="text" maxlength="32" autocomplete="off" placeholder="Ex.: Ana" required>
+          </label>
+          <div class="profile-form-row">
+            <label class="settings-field" for="profile-pin-input">PIN de 4 dígitos <span class="field-hint">(obrigatório no perfil infantil)</span>
+              <input id="profile-pin-input" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="0000">
+            </label>
+            <label class="settings-field" for="profile-color-input">Cor do avatar
+              <input id="profile-color-input" type="color" value="#e50914">
+            </label>
+          </div>
+          <div class="settings-row profile-kids-row">
+            <div><strong>Perfil infantil</strong><small>Mostra apenas títulos com classificação até 12+. O PIN é pedido para sair do perfil.</small></div>
+            <button class="switch" id="profile-kids-toggle" type="button" role="switch" aria-checked="false" aria-label="Perfil infantil"><span></span></button>
+          </div>
+          <div class="profile-form-actions">
+            <button class="button button-red" type="submit" id="profile-save">Adicionar perfil</button>
+            <button class="button button-secondary" type="button" id="profile-cancel" hidden>Cancelar edição</button>
+          </div>
+          <p class="settings-note" id="profile-form-note" role="status"></p>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="details-dialog pin-dialog" id="pin-dialog" aria-labelledby="pin-title">
+    <form class="pin-content" id="pin-form" novalidate>
+      <span class="pin-lock"><svg><use href="#icon-lock"></use></svg></span>
+      <p class="eyebrow">Controle dos pais</p>
+      <h1 id="pin-title">Digite o PIN</h1>
+      <p class="settings-intro" id="pin-message">Informe o PIN para continuar.</p>
+      <label class="settings-field" for="pin-input">PIN de 4 dígitos
+        <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="••••">
+      </label>
+      <p class="settings-note pin-error" id="pin-error" role="alert" hidden>PIN incorreto. Tente novamente.</p>
+      <div class="profile-form-actions">
+        <button class="button button-red" type="submit">Confirmar</button>
+        <button class="button button-secondary" type="button" id="pin-cancel">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

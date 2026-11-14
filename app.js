@@ -366,24 +366,114 @@ const storage = {
   }
 };
 
+const PROFILE_COLORS = ['#e50914', '#f5a623', '#4f9cf9', '#39c07c', '#b06ef5', '#f06292', '#00bcd4', '#ff7043'];
+const KIDS_MATURITY = new Set(['L', '10+', '12+']);
+const PROFILES_KEY = 'nexa-profiles';
+const ACTIVE_PROFILE_KEY = 'nexa-active-profile';
+
+function profileInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'N';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function normalizeProfile(raw, index = 0) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const pin = String(source.pin || '').replace(/\D/g, '').slice(0, 4);
+  const safeId = String(source.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  return {
+    id: safeId || `perfil-${Date.now()}-${index}`,
+    name: String(source.name || 'Perfil').trim().slice(0, 32) || 'Perfil',
+    kids: Boolean(source.kids),
+    pin: pin.length === 4 ? pin : '',
+    color: /^#[0-9a-f]{6}$/i.test(source.color || '') ? source.color : PROFILE_COLORS[index % PROFILE_COLORS.length],
+    list: Array.isArray(source.list) ? source.list.filter((id) => typeof id === 'string') : [],
+    liked: Array.isArray(source.liked) ? source.liked.filter((id) => typeof id === 'string') : [],
+    progress: source.progress && typeof source.progress === 'object' && !Array.isArray(source.progress) ? { ...source.progress } : {}
+  };
+}
+
+function loadProfiles() {
+  const saved = storage.get(PROFILES_KEY, null);
+  if (Array.isArray(saved) && saved.length) return saved.map(normalizeProfile);
+  const legacyList = storage.get('nexa-list', []);
+  const legacyLiked = storage.get('nexa-liked', []);
+  const legacyProgress = storage.get('nexa-progress', null);
+  const progress = legacyProgress && typeof legacyProgress === 'object' && !Array.isArray(legacyProgress)
+    ? { ...defaultProgress, ...legacyProgress }
+    : { ...defaultProgress };
+  return [normalizeProfile({
+    id: 'principal',
+    name: 'Cleber Leonheart',
+    color: PROFILE_COLORS[0],
+    list: legacyList,
+    liked: legacyLiked,
+    progress
+  })];
+}
+
+const profiles = loadProfiles();
+let activeProfileId = storage.get(ACTIVE_PROFILE_KEY, profiles[0].id);
+if (!profiles.some((profile) => profile.id === activeProfileId)) activeProfileId = profiles[0].id;
+
+function activeProfile() {
+  return profiles.find((profile) => profile.id === activeProfileId) || profiles[0];
+}
+
+function saveProfiles() {
+  storage.set(PROFILES_KEY, profiles);
+  storage.set(ACTIVE_PROFILE_KEY, activeProfileId);
+}
+
 const state = {
   view: 'home',
   previousView: 'home',
   query: '',
   genre: 'Todos',
   sort: 'relevancia',
+  searchFilters: { type: 'todos', genre: 'Todos', year: 'todos', rating: 0 },
   quality: storage.get('nexa-quality', 'HD'),
   autoplay: storage.get('nexa-autoplay', true),
-  list: new Set(storage.get('nexa-list', [])),
-  liked: new Set(storage.get('nexa-liked', [])),
-  progress: { ...defaultProgress, ...storage.get('nexa-progress', {}) },
+  list: new Set(activeProfile().list),
+  liked: new Set(activeProfile().liked),
+  progress: { ...activeProfile().progress },
   activeItem: null,
   activeSeason: 0,
   activeEpisode: 0,
   activeVideo: null,
   driveConfig: null,
+  localConfig: null,
+  musicAlbums: [],
+  activeAlbum: null,
+  activeTrackIndex: -1,
   hideControlsTimer: null
 };
+
+function persistActiveProfile() {
+  const profile = activeProfile();
+  if (!profile) return;
+  profile.list = [...state.list];
+  profile.liked = [...state.liked];
+  profile.progress = { ...state.progress };
+  saveProfiles();
+}
+
+const subtitleStore = new Map();
+let activeSubtitleId = null;
+let subtitleObjectUrls = [];
+let subtitleCounter = 0;
+
+function currentCatalog() {
+  if (!activeProfile()?.kids) return catalog;
+  return catalog.filter((item) => KIDS_MATURITY.has(item.maturity));
+}
+
+function isAllowedItem(item) {
+  if (!item) return false;
+  if (!activeProfile()?.kids) return true;
+  return KIDS_MATURITY.has(item.maturity);
+}
 
 const icons = {
   play: 'icon-play',
@@ -391,16 +481,36 @@ const icons = {
   plus: 'icon-plus',
   check: 'icon-check',
   bookmark: 'icon-bookmark',
-  chevron: 'icon-chevron'
+  chevron: 'icon-chevron',
+  film: 'icon-film',
+  tv: 'icon-tv',
+  sparkle: 'icon-sparkle',
+  search: 'icon-search',
+  lock: 'icon-lock',
+  user: 'icon-user'
 };
 
 const mainContent = document.getElementById('main-content');
 const detailsDialog = document.getElementById('details-dialog');
 const playerDialog = document.getElementById('player-dialog');
 const videoPlayer = document.getElementById('video-player');
+const subtitleMenu = document.getElementById('subtitle-menu');
+const subtitleMenuList = document.getElementById('subtitle-menu-list');
+const subtitleButton = document.getElementById('player-subtitles');
+const subtitleFileInput = document.getElementById('subtitle-file');
+const subtitleSearchDialog = document.getElementById('subtitle-search-dialog');
+const subtitleSearchInput = document.getElementById('subtitle-search-query');
+const subtitleResults = document.getElementById('subtitle-results');
+const subtitleSearchOpen = document.getElementById('subtitle-search-open');
+const subtitleSaveHd = document.getElementById('subtitle-save-hd');
 const searchInput = document.getElementById('search-input');
 const searchBox = document.querySelector('.search-box');
 const toastRegion = document.getElementById('toast-region');
+const musicPlayerBar = document.getElementById('music-player-bar');
+const musicAudio = document.getElementById('music-audio');
+const musicCover = document.getElementById('music-cover');
+const musicTitle = document.getElementById('music-title');
+const musicArtist = document.getElementById('music-artist');
 
 const typeLabel = {
   filme: 'Filme',
@@ -412,6 +522,7 @@ const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 const DRIVE_VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'ogv', 'ogg', 'mov', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'm2ts']);
 const DRIVE_BROWSER_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'ogv', 'ogg']);
+const DRIVE_SUBTITLE_EXTENSIONS = new Set(['srt', 'vtt']);
 const DRIVE_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif']);
 const DRIVE_GENERIC_FOLDER = /^(filmes?|movies?|s[ée]ries?|series|shows?|tv|televis[aã]o|v[ií]deos?|videos?|m[ií]dia|media|meu drive|my drive|google drive|animes?|anima[cç][aã]o|document[aá]rios?|a[cç][aã]o|com[eé]dia|drama|terror|suspense|fic[cç][aã]o|romance|infantil|fam[ií]lia|familia)$/i;
 const DRIVE_SERIES_HINT = /\b(s[ée]ries?|series|shows?|tv|televis[aã]o|animes?|novelas?)\b/i;
@@ -434,6 +545,75 @@ function isDriveVideo(file) {
 function isDriveImage(file) {
   if (!file) return false;
   return String(file.mimeType || '').startsWith('image/') || DRIVE_IMAGE_EXTENSIONS.has(driveFileExtension(file.name));
+}
+
+function isDriveSubtitle(file) {
+  if (!file) return false;
+  return DRIVE_SUBTITLE_EXTENSIONS.has(driveFileExtension(file.name));
+}
+
+function subtitleLanguage(name) {
+  const text = String(name || '').toLowerCase();
+  if (/(^|[^a-z])(pt[- ]?br|ptbr)([^a-z]|$)/.test(text)) return { code: 'pt-BR', label: 'Português (BR)' };
+  if (/(^|[^a-z])(pt|por|portug[uê]es|portuguese)([^a-z]|$)/.test(text)) return { code: 'pt', label: 'Português' };
+  if (/(^|[^a-z])(en|eng|english|ingl[eê]s)([^a-z]|$)/.test(text)) return { code: 'en', label: 'Inglês' };
+  if (/(^|[^a-z])(es|spa|spanish|espanhol)([^a-z]|$)/.test(text)) return { code: 'es', label: 'Espanhol' };
+  if (/(^|[^a-z])(fr|fre|french|franc[eê]s)([^a-z]|$)/.test(text)) return { code: 'fr', label: 'Francês' };
+  if (/(^|[^a-z])(de|ger|german|alem[aã]o)([^a-z]|$)/.test(text)) return { code: 'de', label: 'Alemão' };
+  if (/(^|[^a-z])(it|ita|italian|italiano)([^a-z]|$)/.test(text)) return { code: 'it', label: 'Italiano' };
+  if (/(^|[^a-z])(ja|jp|japanese|japon[eê]s)([^a-z]|$)/.test(text)) return { code: 'ja', label: 'Japonês' };
+  return { code: '', label: '' };
+}
+
+function subtitleDisplayLabel(name) {
+  const language = subtitleLanguage(name);
+  const forced = /\bforced\b/i.test(name) ? ' forçada' : '';
+  const sdh = /\b(sdh|cc)\b/i.test(name) ? ' SDH' : '';
+  if (language.label) return `${language.label}${forced}${sdh}`;
+  return `${splitDriveTitle(name).title || String(name || 'Legenda')}${forced}${sdh}`.trim();
+}
+
+function driveSubtitleCore(name) {
+  const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '');
+  const core = base
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\b(2160p|1080p|720p|480p|4k|uhd|bluray|blu ray|brrip|bdrip|webrip|web dl|webdl|hdrip|dvdrip|remux|proper|repack|x264|x265|h264|h265|hevc|av1|aac|ac3|eac3|dts|dual audio|dublado|legendado)\b.*$/i, ' ');
+  return normalizeDriveKey(core).replace(/-(?:pt-?br|ptbr|pt|por|portugues|portuguese|eng|en|english|ingles|spa|es|espanhol|spanish|fre|fr|french|frances|ger|de|german|alemao|ita|it|italian|italiano|ja|jp|japanese|japones)(?:-.*)?$/, '');
+}
+
+function findDriveSubtitles(videoFile, subtitles, apiKey) {
+  if (!videoFile || !subtitles.length) return [];
+  const core = driveSubtitleCore(videoFile.name);
+  if (!core) return [];
+  const parentId = videoFile.ancestors?.[videoFile.ancestors.length - 1]?.id || null;
+  const matches = subtitles.filter((file) => {
+    const subCore = driveSubtitleCore(file.name);
+    return subCore && (subCore === core || core.startsWith(`${subCore}-`) || subCore.startsWith(`${core}-`));
+  });
+  const sameFolder = matches.filter((file) => (file.ancestors?.[file.ancestors.length - 1]?.id || null) === parentId);
+  const chosen = sameFolder.length ? sameFolder : matches;
+  return chosen.map((file) => {
+    const language = subtitleLanguage(file.name);
+    return {
+      id: `drive-sub-${file.id}`,
+      label: subtitleDisplayLabel(file.name),
+      lang: language.code || 'pt',
+      source: 'drive',
+      fileId: file.id,
+      name: file.name,
+      url: driveMediaUrl(file.id, apiKey || '')
+    };
+  });
+}
+
+function srtToVtt(text) {
+  const normalized = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return '';
+  if (/^WEBVTT/i.test(normalized)) return `${normalized}\n`;
+  const cueText = normalized
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{1,3})/g, (_match, stamp, millis) => `${stamp}.${millis.padEnd(3, '0')}`)
+    .replace(/(\d{2}:\d{2}),(\d{1,3})/g, (_match, stamp, millis) => `00:${stamp}.${millis.padEnd(3, '0')}`);
+  return `WEBVTT\n\n${cueText}\n`;
 }
 
 function isBrowserVideo(file) {
@@ -559,6 +739,7 @@ function pickDriveArtwork(images, folderId, fallbackFileId) {
 function buildDriveCatalog(files, rootName, apiKey) {
   const videos = files.filter(isDriveVideo);
   const images = files.filter(isDriveImage);
+  const subtitles = files.filter(isDriveSubtitle);
   const movieItems = [];
   const seriesMap = new Map();
   const rootIsSeries = DRIVE_SERIES_HINT.test(rootName || '');
@@ -605,6 +786,7 @@ function buildDriveCatalog(files, rootName, apiKey) {
         driveName: file.name,
         driveFolderId: parent?.id || null,
         playable: isBrowserVideo(file),
+        subtitles: findDriveSubtitles(file, subtitles, apiKey),
         new: true
       });
       return;
@@ -664,7 +846,8 @@ function buildDriveCatalog(files, rootName, apiKey) {
             duration: formatDriveDuration(durationSeconds),
             modifiedTime: episode.file.modifiedTime,
             thumbnail: driveThumbnail(episode.file.id, 780),
-            playable: isBrowserVideo(episode.file)
+            playable: isBrowserVideo(episode.file),
+            subtitles: findDriveSubtitles(episode.file, subtitles, apiKey)
           };
         });
         return {
@@ -756,7 +939,7 @@ async function walkDriveFolder(folderId, ancestors, account, config) {
       account.folders += 1;
       await walkDriveFolder(child.id, [...ancestors, { id: child.id, name: child.name }], account, config);
       if (account.files.length >= 2000) break;
-    } else if (isDriveVideo(child) || isDriveImage(child)) {
+    } else if (isDriveVideo(child) || isDriveImage(child) || isDriveSubtitle(child)) {
       account.files.push({ ...child, ancestors });
       if (account.files.length >= 2000) break;
     }
@@ -899,6 +1082,253 @@ function restoreDriveLibrary() {
   if (state.driveConfig) loadDriveLibrary(state.driveConfig, { silent: true });
 }
 
+let localLoading = false;
+
+function setLocalStatus(message, type = '') {
+  const status = document.getElementById('local-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', type === 'error');
+  status.classList.toggle('is-success', type === 'success');
+}
+
+function updateLocalNavCount() {
+  const count = catalog.filter((item) => item.local).length;
+  const badge = document.getElementById('local-count');
+  if (!badge) return;
+  badge.textContent = count;
+  badge.hidden = !count;
+}
+
+function localServerBase() {
+  const configured = String(storage.get('nexa-local-server', '') || '').trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
+    return `${window.location.protocol}//${window.location.host}`;
+  }
+  return 'http://127.0.0.1:8090';
+}
+
+function localApi(path) {
+  return `${localServerBase()}${path}`;
+}
+
+function localUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.startsWith('/api/local/')) return url;
+  return `${localServerBase()}${url}`;
+}
+
+function localizeItem(item) {
+  if (!item?.local) return item;
+  const copy = { ...item };
+  copy.video = localUrl(copy.video);
+  copy.transcodeUrl = localUrl(copy.transcodeUrl);
+  copy.poster = localUrl(copy.poster);
+  copy.backdrop = localUrl(copy.backdrop);
+  if (Array.isArray(copy.subtitles)) {
+    copy.subtitles = copy.subtitles.map((subtitle) => ({ ...subtitle, url: localUrl(subtitle.url) }));
+  }
+  if (Array.isArray(copy.seasons)) {
+    copy.seasons = copy.seasons.map((season) => ({
+      ...season,
+      episodeFiles: (season.episodeFiles || []).map((episode) => ({
+        ...episode,
+        video: localUrl(episode.video),
+        transcodeUrl: localUrl(episode.transcodeUrl),
+        thumbnail: localUrl(episode.thumbnail),
+        subtitles: (episode.subtitles || []).map((subtitle) => ({ ...subtitle, url: localUrl(subtitle.url) }))
+      }))
+    }));
+  }
+  return copy;
+}
+
+function localizeAlbums(albums) {
+  return (albums || []).map((album) => ({
+    ...album,
+    cover: localUrl(album.cover),
+    tracks: (album.tracks || []).map((track) => ({ ...track, url: localUrl(track.url) }))
+  }));
+}
+
+function applyLocalItems(items) {
+  for (let index = catalog.length - 1; index >= 0; index -= 1) {
+    if (catalog[index].local) catalog.splice(index, 1);
+  }
+  catalog.push(...items.map(localizeItem));
+  updateLocalNavCount();
+}
+
+function updateLocalSettingsUI() {
+  const input = document.getElementById('local-root');
+  const serverInput = document.getElementById('local-server');
+  if (serverInput && document.activeElement !== serverInput) {
+    serverInput.value = storage.get('nexa-local-server', '') || localServerBase();
+  }
+  const scanButton = document.getElementById('local-scan');
+  const clearButton = document.getElementById('local-clear');
+  if (!input || !scanButton || !clearButton) return;
+  if (document.activeElement !== input) input.value = state.localConfig?.root || storage.get('nexa-local-root', '') || '';
+  const sync = storage.get('nexa-local-sync', null);
+  const subtitleStatus = document.getElementById('subtitle-settings-status');
+  if (subtitleStatus && state.localConfig?.hasSubtitleKey) {
+    subtitleStatus.textContent = 'Chave da API configurada no servidor local: a busca de legendas online está ativa.';
+  }
+  const omdbStatus = document.getElementById('omdb-settings-status');
+  if (omdbStatus && state.localConfig?.hasOmdbKey) {
+    omdbStatus.textContent = 'Chave do OMDb configurada no servidor local: os metadados dos filmes são atualizados no scan.';
+  }
+  const enrichButton = document.getElementById('local-omdb-enrich');
+  if (enrichButton) enrichButton.hidden = !state.localConfig?.hasOmdbKey;
+  const hasItems = catalog.some((item) => item.local);
+  clearButton.hidden = !hasItems;
+  if (localLoading) {
+    scanButton.disabled = true;
+    setLocalStatus('Lendo o HD... isso pode levar alguns minutos na primeira vez.');
+  } else {
+    scanButton.disabled = false;
+    if (sync?.items) {
+      const date = new Date(sync.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      const music = sync.tracks ? `, ${sync.albums} álbuns e ${sync.tracks} faixas` : '';
+      setLocalStatus(`${sync.items} títulos no HD: ${sync.movies} filmes, ${sync.series} séries (${sync.episodes} episódios)${music}. Atualizado em ${date}.`, 'success');
+    } else if (state.localConfig) {
+      setLocalStatus('Servidor local conectado. Clique em “Escanear HD” para atualizar a biblioteca.');
+    } else {
+      setLocalStatus('Servidor local não conectado.');
+    }
+  }
+}
+
+function localDelay(ms) {
+  return new Promise((resolve) => { window.setTimeout(resolve, ms); });
+}
+
+async function loadLocalLibrary(options = {}) {
+  if (localLoading) return;
+  localLoading = true;
+  updateLocalSettingsUI();
+  try {
+    let response = await fetch(localApi('/api/local/library'), { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    let data = await response.json();
+    let tries = 0;
+    while (data.scanning && tries < 80) {
+      if (!options.silent) setLocalStatus('Escaneando o HD... isso pode levar alguns minutos.');
+      await localDelay(3000);
+      response = await fetch(localApi('/api/local/library'), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      data = await response.json();
+      tries += 1;
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    const albums = localizeAlbums(Array.isArray(data.music?.albums) ? data.music.albums : []);
+    applyLocalItems(items);
+    state.musicAlbums = albums;
+    state.localConfig = { root: data.root || '', stats: data.stats || {}, at: data.at || 0 };
+    try {
+      const configResponse = await fetch(localApi('/api/local/config'), { cache: 'no-store' });
+      if (configResponse.ok) {
+        const configData = await configResponse.json();
+        state.localConfig.hasSubtitleKey = Boolean(configData.hasSubtitleKey);
+        state.localConfig.hasOmdbKey = Boolean(configData.hasOmdbKey);
+      }
+    } catch (error) {
+      state.localConfig.hasSubtitleKey = false;
+    }
+    const stats = data.stats || {};
+    const sync = {
+      at: data.at || Date.now(),
+      items: items.length,
+      movies: stats.movies || items.filter((item) => item.type === 'filme').length,
+      series: stats.series || items.filter((item) => item.type === 'serie').length,
+      episodes: stats.episodes || 0,
+      albums: stats.albums || albums.length,
+      tracks: stats.tracks || 0
+    };
+    storage.set('nexa-local-cache', items);
+    storage.set('nexa-local-sync', sync);
+    storage.set('nexa-local-root', data.root || '');
+    if (data.root) storage.set('nexa-local-config', { root: data.root });
+    updateLocalSettingsUI();
+    if (state.view === 'busca') handleSearch(state.query);
+    else if (state.view === 'musica') renderMusicView();
+    else refreshCurrentView();
+    if (!options.silent) showToast(`HD local: ${items.length} títulos encontrados`, 'success');
+  } catch (error) {
+    if (!options.silent) {
+      setLocalStatus('Servidor local indisponível. Inicie com python3 local_server.py.', 'error');
+      showToast('Não foi possível ler o HD local. O servidor está rodando?', 'error');
+    } else if (document.getElementById('settings-dialog')?.open) {
+      setLocalStatus('Servidor local indisponível. Inicie com python3 local_server.py.', 'error');
+    }
+  } finally {
+    localLoading = false;
+    updateLocalSettingsUI();
+  }
+}
+
+async function scanLocalLibrary() {
+  const input = document.getElementById('local-root');
+  const root = input?.value.trim() || state.localConfig?.root || '';
+  if (!root) {
+    setLocalStatus('Informe a pasta do HD.', 'error');
+    input?.focus();
+    return;
+  }
+  if (localLoading) return;
+  localLoading = true;
+  updateLocalSettingsUI();
+  setLocalStatus('Escaneando o HD... isso pode levar alguns minutos.');
+  try {
+    const response = await fetch(localApi('/api/local/config'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    storage.set('nexa-local-root', data.root || root);
+    storage.set('nexa-local-config', { root: data.root || root });
+    localLoading = false;
+    await loadLocalLibrary();
+  } catch (error) {
+    setLocalStatus(error.message || 'Falha ao escanear o HD.', 'error');
+    showToast('Falha ao escanear o HD local.', 'error');
+  } finally {
+    localLoading = false;
+    updateLocalSettingsUI();
+  }
+}
+
+function disconnectLocal() {
+  state.localConfig = null;
+  state.musicAlbums = [];
+  applyLocalItems([]);
+  storage.set('nexa-local-cache', []);
+  storage.set('nexa-local-sync', null);
+  storage.set('nexa-local-root', '');
+  storage.set('nexa-local-config', null);
+  updateLocalSettingsUI();
+  if (state.view === 'busca') handleSearch(state.query);
+  else if (state.view === 'musica') renderMusicView();
+  else refreshCurrentView();
+  showToast('Biblioteca do HD removida deste navegador', 'success');
+}
+
+function restoreLocalLibrary() {
+  const config = storage.get('nexa-local-config', null);
+  const cached = storage.get('nexa-local-cache', null);
+  state.localConfig = config?.root ? config : null;
+  if (Array.isArray(cached) && cached.length) {
+    applyLocalItems(cached);
+    if (state.view === 'home') renderHome();
+  }
+  updateLocalSettingsUI();
+  loadLocalLibrary({ silent: true });
+}
+
 function icon(name) {
   return `<svg aria-hidden="true"><use href="#${icons[name] || name}"></use></svg>`;
 }
@@ -914,7 +1344,7 @@ function getItem(id) {
 }
 
 function getGenres() {
-  return ['Todos', ...new Set(catalog.flatMap((item) => item.genres))];
+  return ['Todos', ...new Set(currentCatalog().flatMap((item) => item.genres))];
 }
 
 function sortItems(items) {
@@ -927,15 +1357,22 @@ function sortItems(items) {
 }
 
 function filteredCatalog(view = state.view) {
-  let items = catalog.slice();
+  let items = currentCatalog();
   if (view === 'filmes') items = items.filter((item) => item.type === 'filme');
   if (view === 'series') items = items.filter((item) => item.type === 'serie');
   if (view === 'filmes' || view === 'series') items.sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
   if (view === 'originais') items = items.filter((item) => item.original);
   if (view === 'novidades') items = items.filter((item) => item.new);
   if (view === 'lista') items = items.filter((item) => state.list.has(item.id));
-  if (view === 'busca') items = items.slice();
-  if (state.genre !== 'Todos') items = items.filter((item) => item.genres.includes(state.genre));
+  if (view === 'busca') {
+    const filters = state.searchFilters;
+    if (filters.type !== 'todos') items = items.filter((item) => item.type === filters.type);
+    if (filters.genre !== 'Todos') items = items.filter((item) => item.genres.includes(filters.genre));
+    if (filters.year !== 'todos') items = items.filter((item) => String(item.year) === filters.year);
+    if (Number(filters.rating) > 0) items = items.filter((item) => Number(item.rating) >= Number(filters.rating));
+  } else if (state.genre !== 'Todos') {
+    items = items.filter((item) => item.genres.includes(state.genre));
+  }
   if (state.query) {
     const query = state.query.toLocaleLowerCase('pt-BR');
     items = items.filter((item) => [item.title, item.description, item.cast.join(' '), item.genres.join(' ')]
@@ -986,8 +1423,7 @@ function sectionRow(title, items, options = {}) {
     </section>`;
 }
 
-function homeHero() {
-  const item = catalog[0];
+function homeHero(item) {
   return `
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-backdrop" style="background-image:url('${item.backdrop}')"></div>
@@ -1011,30 +1447,144 @@ function homeHero() {
 }
 
 function renderHome() {
-  const continueItems = catalog.filter((item) => state.progress[item.id]).sort((a, b) => state.progress[b.id].percent - state.progress[a.id].percent);
-  const trending = catalog.filter((item) => item.trending);
-  const top = catalog.filter((item) => item.top).slice(0, 10);
-  const originals = catalog.filter((item) => item.original);
-  const movies = catalog.filter((item) => item.type === 'filme').sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
-  const series = catalog.filter((item) => item.type === 'serie').sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
-  const documentaries = catalog.filter((item) => item.type === 'documentario');
-  const fresh = catalog.filter((item) => item.new);
-  const drive = catalog.filter((item) => item.drive);
+  const visible = currentCatalog();
+  const continueItems = visible.filter((item) => state.progress[item.id]).sort((a, b) => state.progress[b.id].percent - state.progress[a.id].percent);
+  const trending = visible.filter((item) => item.trending);
+  const top = visible.filter((item) => item.top).slice(0, 10);
+  const originals = visible.filter((item) => item.original);
+  const movies = visible.filter((item) => item.type === 'filme').sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
+  const series = visible.filter((item) => item.type === 'serie').sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
+  const documentaries = visible.filter((item) => item.type === 'documentario');
+  const fresh = visible.filter((item) => item.new);
+  const drive = visible.filter((item) => item.drive);
+  const local = visible.filter((item) => item.local);
+  const hero = visible[0];
+  const empty = `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('film')}</span><h2>Nenhum título disponível</h2><p>Não há títulos adequados para este perfil no momento.</p></div></div>`;
   mainContent.innerHTML = `
     <div class="content-view">
-      ${homeHero()}
+      ${hero ? homeHero(hero) : ''}
       <div class="content-sections">
-        ${sectionRow('Continue assistindo', continueItems, { subtitle: 'Retome de onde parou' })}
-        ${sectionRow('Do seu Google Drive', drive, { subtitle: 'Filmes e séries da sua pasta conectada' })}
-        ${sectionRow('Em alta agora', trending, { subtitle: 'O que todo mundo está assistindo', link: { view: 'filmes' } })}
-        ${sectionRow('Top 10 hoje', top, { top: true })}
-        ${sectionRow('Originais NEXA', originals, { subtitle: 'Histórias exclusivas para assistir' })}
-        ${sectionRow('Filmes populares', movies)}
-        ${sectionRow('Séries que você precisa ver', series)}
-        ${sectionRow('Documentários que inspiram', documentaries)}
-        ${sectionRow('Novidades', fresh)}
+        ${visible.length ? `
+          ${sectionRow('Continue assistindo', continueItems, { subtitle: 'Retome de onde parou' })}
+          ${sectionRow('Do seu Google Drive', drive, { subtitle: 'Filmes e séries da sua pasta conectada' })}
+          ${sectionRow('Do seu HD', local, { subtitle: 'Filmes e séries da biblioteca local' })}
+          ${sectionRow('Em alta agora', trending, { subtitle: 'O que todo mundo está assistindo', link: { view: 'filmes' } })}
+          ${sectionRow('Top 10 hoje', top, { top: true })}
+          ${sectionRow('Originais NEXA', originals, { subtitle: 'Histórias exclusivas para assistir' })}
+          ${sectionRow('Filmes populares', movies)}
+          ${sectionRow('Séries que você precisa ver', series)}
+          ${sectionRow('Documentários que inspiram', documentaries)}
+          ${sectionRow('Novidades', fresh)}
+        ` : empty}
       </div>
     </div>`;
+}
+
+function currentMusicAlbums() {
+  return activeProfile()?.kids ? [] : state.musicAlbums;
+}
+
+function albumCard(album) {
+  const tracks = album.tracks?.length || 0;
+  return `
+    <article class="album-card">
+      <button class="album-cover-button" type="button" data-album="${album.id}" aria-label="Abrir álbum ${escapeHtml(album.title)}">
+        <img src="${album.cover || fallbackArtwork}" alt="Capa de ${escapeHtml(album.title)}" loading="lazy">
+        <span class="album-play">${icon('play')}</span>
+      </button>
+      <strong class="album-title">${escapeHtml(album.title)}</strong>
+      <small class="album-meta">${escapeHtml(album.artist || 'Vários artistas')} • ${tracks} faixa${tracks === 1 ? '' : 's'}</small>
+    </article>`;
+}
+
+function renderMusicView() {
+  state.view = 'musica';
+  updateActiveNavigation();
+  if (state.activeAlbum) {
+    renderAlbumView(state.activeAlbum);
+    return;
+  }
+  const albums = currentMusicAlbums();
+  const trackCount = albums.reduce((total, album) => total + (album.tracks?.length || 0), 0);
+  mainContent.innerHTML = `
+    <section class="section-view">
+      <header class="section-header"><div><p class="eyebrow">Sua biblioteca</p><h1>Música</h1><p>${albums.length ? `${albums.length} álbun${albums.length === 1 ? 's' : 's'} e ${trackCount} faixas no HD local.` : 'Conecte o HD local para ouvir sua coleção.'}</p></div></header>
+      ${albums.length
+        ? `<div class="album-grid">${albums.map(albumCard).join('')}</div>`
+        : `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('music')}</span><h2>Nenhuma música ainda</h2><p>Inicie o servidor local, escaneie o HD e suas músicas aparecerão aqui.</p><button class="button button-red" type="button" data-local-settings>Escanear HD</button></div></div>`}
+    </section>`;
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function renderAlbumView(album) {
+  state.view = 'musica';
+  updateActiveNavigation();
+  const trackIndex = state.activeTrackIndex;
+  mainContent.innerHTML = `
+    <section class="section-view album-view">
+      <button class="back-link" type="button" data-album-back>${icon('chevron')} Todos os álbuns</button>
+      <header class="album-header">
+        <img class="album-detail-cover" src="${album.cover || fallbackArtwork}" alt="Capa de ${escapeHtml(album.title)}">
+        <div>
+          <p class="eyebrow">Álbum</p>
+          <h1>${escapeHtml(album.title)}</h1>
+          <p class="album-detail-meta">${escapeHtml(album.artist || 'Vários artistas')}${album.year ? ` • ${album.year}` : ''} • ${album.tracks?.length || 0} faixa${album.tracks?.length === 1 ? '' : 's'}</p>
+          <button class="button button-red" type="button" data-play-album="${album.id}">${icon('play')} Tocar álbum</button>
+        </div>
+      </header>
+      <ol class="track-list">
+        ${(album.tracks || []).map((track, index) => `
+          <li class="${index === trackIndex ? 'playing' : ''}">
+            <button type="button" data-track="${album.id}" data-track-index="${index}">
+              <span class="track-number">${track.number || index + 1}</span>
+              <span class="track-copy"><strong>${escapeHtml(track.title)}</strong><small>${escapeHtml(track.artist || album.artist || '')}</small></span>
+              <span class="track-action">${index === trackIndex ? icon('volume') : icon('play')}</span>
+            </button>
+          </li>`).join('')}
+      </ol>
+    </section>`;
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function showMusicBar(track, album) {
+  if (!musicPlayerBar || !track) return;
+  musicCover.src = album.cover || fallbackArtwork;
+  musicCover.alt = `Capa de ${album.title}`;
+  musicTitle.textContent = track.title;
+  musicArtist.textContent = `${track.artist || album.artist || ''}${album.title ? ` • ${album.title}` : ''}`;
+  musicPlayerBar.hidden = false;
+  document.body.classList.add('music-open');
+}
+
+function playAlbumTrack(albumId, index) {
+  const album = state.musicAlbums.find((entry) => entry.id === albumId);
+  const track = album?.tracks?.[index];
+  if (!album || !track) return;
+  state.activeAlbum = album;
+  state.activeTrackIndex = index;
+  musicAudio.src = track.url;
+  musicAudio.dataset.albumId = album.id;
+  musicAudio.dataset.trackIndex = String(index);
+  showMusicBar(track, album);
+  const promise = musicAudio.play();
+  if (promise) promise.catch(() => showToast('Clique em reproduzir para ouvir a música', 'success'));
+  renderAlbumView(album);
+}
+
+function playNextTrack() {
+  const album = state.musicAlbums.find((entry) => entry.id === musicAudio.dataset.albumId);
+  if (!album) return;
+  const next = Number(musicAudio.dataset.trackIndex || 0) + 1;
+  if (next < album.tracks.length) playAlbumTrack(album.id, next);
+}
+
+function stopMusic() {
+  musicAudio.pause();
+  musicAudio.removeAttribute('src');
+  musicAudio.load();
+  musicPlayerBar.hidden = true;
+  document.body.classList.remove('music-open');
+  state.activeTrackIndex = -1;
 }
 
 function browseEmptyState() {
@@ -1085,14 +1635,17 @@ function browseView() {
 function renderView(view) {
   state.view = view;
   state.genre = 'Todos';
+  if (view === 'musica') state.activeAlbum = null;
   updateActiveNavigation();
   if (view === 'home') renderHome();
+  else if (view === 'musica') renderMusicView();
   else browseView();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 function refreshCurrentView() {
   if (state.view === 'home') renderHome();
+  else if (state.view === 'musica') renderMusicView();
   else if (state.view !== 'busca') browseView();
 }
 
@@ -1105,6 +1658,10 @@ function focusCard(id) {
 function openDetails(id) {
   const item = getItem(id);
   if (!item) return;
+  if (!isAllowedItem(item)) {
+    showToast('Este título não está disponível no perfil infantil.', 'error');
+    return;
+  }
   state.activeItem = item;
   state.activeSeason = 0;
   const inList = state.list.has(item.id);
@@ -1134,6 +1691,9 @@ function openDetails(id) {
   playButton.innerHTML = `${icon('play')}<span>${state.progress[item.id] ? 'Continuar assistindo' : 'Assistir'}</span>`;
   playButton.dataset.id = item.id;
   document.getElementById('detail-share').dataset.id = item.id;
+  const omdbButton = document.getElementById('detail-omdb');
+  omdbButton.hidden = !(item.local && item.type === 'filme');
+  omdbButton.dataset.id = item.id;
   const episodeSection = document.getElementById('episodes-section');
   episodeSection.hidden = !item.seasons?.length;
   if (item.seasons?.length) {
@@ -1141,7 +1701,7 @@ function openDetails(id) {
     select.innerHTML = item.seasons.map((season, index) => `<option value="${index}">${season.name}</option>`).join('');
     renderEpisodes(item, 0);
   }
-  const related = catalog.filter((candidate) => candidate.id !== item.id && candidate.genres.some((genre) => item.genres.includes(genre))).slice(0, 4);
+  const related = currentCatalog().filter((candidate) => candidate.id !== item.id && candidate.genres.some((genre) => item.genres.includes(genre))).slice(0, 4);
   document.getElementById('related-grid').innerHTML = related.map((candidate) => posterCard(candidate)).join('');
   if (detailsDialog.open) detailsDialog.close();
   detailsDialog.showModal();
@@ -1206,7 +1766,7 @@ function playNextEpisode(target = nextEpisodeTarget()) {
     episode: target.episodeIndex,
     updatedAt: Date.now()
   };
-  storage.set('nexa-progress', state.progress);
+  persistActiveProfile();
   if (nextFile?.playable === false) showToast('O próximo episódio pode não tocar neste navegador.', 'error');
   return true;
 }
@@ -1214,10 +1774,14 @@ function playNextEpisode(target = nextEpisodeTarget()) {
 function openPlayer(id, episodeIndex = null, options = {}) {
   const item = getItem(id);
   if (!item) return;
+  if (!isAllowedItem(item)) {
+    showToast('Este título não está disponível no perfil infantil.', 'error');
+    return;
+  }
   const fromDetails = options.fromDetails ?? detailsDialog.open;
   let resolvedEpisode = episodeIndex;
   let resolvedSeason = state.activeSeason;
-  if (resolvedEpisode === null && item.seasons?.length && item.drive) {
+  if (resolvedEpisode === null && item.seasons?.length && (item.drive || item.local)) {
     const last = state.progress[item.id];
     if (last && Number.isInteger(last.season) && Number.isInteger(last.episode)) {
       resolvedSeason = last.season;
@@ -1234,7 +1798,7 @@ function openPlayer(id, episodeIndex = null, options = {}) {
   }
   const season = item.seasons?.[resolvedSeason];
   const episodeFile = resolvedEpisode !== null ? season?.episodeFiles?.[resolvedEpisode] : null;
-  const progressKey = resolvedEpisode !== null && item.drive
+  const progressKey = resolvedEpisode !== null && (item.drive || item.local)
     ? `${item.id}::s${resolvedSeason}e${resolvedEpisode}`
     : item.id;
   state.activeVideo = { item, episodeIndex: resolvedEpisode, seasonIndex: resolvedSeason, episodeFile, progressKey, fallbackTried: false, fromDetails };
@@ -1246,6 +1810,7 @@ function openPlayer(id, episodeIndex = null, options = {}) {
     ? `${item.seasons[resolvedSeason].name} • Episódio ${episodeFile?.number ?? resolvedEpisode + 1}`
     : item.duration;
   document.getElementById('player-quality').textContent = state.quality;
+  resetSubtitles();
   const saved = state.progress[progressKey] || null;
   const activeVideo = state.activeVideo;
   videoPlayer.addEventListener('loadedmetadata', function resume() {
@@ -1268,8 +1833,174 @@ function openPlayer(id, episodeIndex = null, options = {}) {
 
 function closePlayer() {
   if (videoPlayer.paused === false) videoPlayer.pause();
+  resetSubtitles();
   playerDialog.close();
   document.body.classList.remove('modal-open');
+}
+
+function currentPlaybackKey() {
+  const active = state.activeVideo;
+  if (!active) return null;
+  return active.progressKey || active.item.id;
+}
+
+function collectSubtitles() {
+  const active = state.activeVideo;
+  if (!active) return [];
+  const list = [];
+  const add = (subtitle) => {
+    if (subtitle && !list.some((candidate) => candidate.id === subtitle.id)) list.push(subtitle);
+  };
+  (active.item.subtitles || []).forEach(add);
+  (active.episodeFile?.subtitles || []).forEach(add);
+  (subtitleStore.get(currentPlaybackKey()) || []).forEach(add);
+  return list;
+}
+
+function localSubtitleTarget() {
+  const active = state.activeVideo;
+  if (!active?.item?.local) return null;
+  const fileRel = active.episodeFile?.fileRel || active.item.fileRel;
+  if (!fileRel) return null;
+  return {
+    rootKey: active.item.rootKey,
+    path: fileRel,
+    title: active.item.title,
+    year: active.item.year
+  };
+}
+
+function updateSubtitleActionButtons() {
+  const target = localSubtitleTarget();
+  subtitleSearchOpen.hidden = !target;
+  const activeSubtitle = collectSubtitles().find((candidate) => candidate.id === activeSubtitleId);
+  subtitleSaveHd.hidden = !(target && activeSubtitle && activeSubtitle.source === 'local');
+}
+
+function resetSubtitles() {
+  closeSubtitleMenu();
+  subtitleButton.classList.remove('active');
+  subtitleButton.setAttribute('aria-expanded', 'false');
+  activeSubtitleId = null;
+  [...videoPlayer.querySelectorAll('track')].forEach((track) => track.remove());
+  subtitleObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  subtitleObjectUrls = [];
+  subtitleMenuList.innerHTML = '';
+}
+
+function renderSubtitleMenu() {
+  const subtitles = collectSubtitles();
+  const offSelected = !activeSubtitleId;
+  subtitleMenuList.innerHTML = `
+    <button class="subtitle-option ${offSelected ? 'selected' : ''}" type="button" role="menuitemradio" aria-checked="${offSelected}" data-subtitle="">
+      <span>Desligado</span>
+    </button>
+    ${subtitles.map((subtitle) => {
+      const selected = subtitle.id === activeSubtitleId;
+      return `<button class="subtitle-option ${selected ? 'selected' : ''}" type="button" role="menuitemradio" aria-checked="${selected}" data-subtitle="${subtitle.id}">
+        <span>${escapeHtml(subtitle.label)}</span>
+        <small>${subtitle.source === 'drive' ? 'Google Drive' : subtitle.source === 'local-server' ? 'HD local' : 'Arquivo local'}</small>
+      </button>`;
+    }).join('')}
+    ${subtitles.length ? '' : '<p class="subtitle-empty">Nenhuma legenda encontrada. Carregue um arquivo .srt ou .vtt.</p>'}`;
+  updateSubtitleActionButtons();
+}
+
+function openSubtitleMenu() {
+  renderSubtitleMenu();
+  subtitleMenu.hidden = false;
+  subtitleButton.setAttribute('aria-expanded', 'true');
+  scheduleControlsHide();
+}
+
+function closeSubtitleMenu() {
+  if (!subtitleMenu) return;
+  subtitleMenu.hidden = true;
+  if (subtitleButton) subtitleButton.setAttribute('aria-expanded', 'false');
+}
+
+function disableSubtitles() {
+  const tracks = videoPlayer.textTracks;
+  for (let index = 0; index < tracks.length; index += 1) tracks[index].mode = 'disabled';
+  activeSubtitleId = null;
+  subtitleButton.classList.remove('active');
+  renderSubtitleMenu();
+}
+
+async function activateSubtitle(id) {
+  const subtitle = collectSubtitles().find((candidate) => candidate.id === id);
+  if (!subtitle) return;
+  try {
+    const text = subtitle.text ?? await fetchSubtitleText(subtitle);
+    const vtt = srtToVtt(text);
+    if (!vtt.trim()) throw new Error('Legenda vazia');
+    const url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+    subtitleObjectUrls.push(url);
+    [...videoPlayer.querySelectorAll('track')].forEach((track) => track.remove());
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = subtitle.label || 'Legenda';
+    track.srclang = subtitle.lang || 'pt';
+    track.src = url;
+    track.default = true;
+    videoPlayer.append(track);
+    const showTrack = () => {
+      const tracks = videoPlayer.textTracks;
+      for (let index = 0; index < tracks.length; index += 1) tracks[index].mode = tracks[index] === tracks[tracks.length - 1] ? 'showing' : 'disabled';
+    };
+    showTrack();
+    track.addEventListener('load', showTrack);
+    activeSubtitleId = subtitle.id;
+    subtitleButton.classList.add('active');
+    renderSubtitleMenu();
+    showToast(`Legenda: ${subtitle.label}`, 'success');
+  } catch {
+    showToast('Não foi possível carregar essa legenda.', 'error');
+  }
+}
+
+async function fetchSubtitleText(subtitle) {
+  const url = subtitle.url || (subtitle.fileId ? driveMediaUrl(subtitle.fileId, state.driveConfig?.apiKey || '') : '');
+  if (!url) throw new Error('Legenda sem origem');
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.text();
+}
+
+function readFileText(file) {
+  if (typeof file.text === 'function') return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler o arquivo'));
+    reader.readAsText(file);
+  });
+}
+
+async function loadSubtitleFile(file) {
+  if (!file) return;
+  try {
+    const text = await readFileText(file);
+    if (!text.trim()) throw new Error('Arquivo vazio');
+    const language = subtitleLanguage(file.name);
+    const subtitle = {
+      id: `local-sub-${Date.now()}-${subtitleCounter += 1}`,
+      label: subtitleDisplayLabel(file.name),
+      lang: language.code || 'pt',
+      source: 'local',
+      name: file.name,
+      text
+    };
+    const key = currentPlaybackKey();
+    if (!key) return;
+    const stored = subtitleStore.get(key) || [];
+    stored.push(subtitle);
+    subtitleStore.set(key, stored);
+    closeSubtitleMenu();
+    await activateSubtitle(subtitle.id);
+  } catch {
+    showToast('Não foi possível ler o arquivo de legenda.', 'error');
+  }
 }
 
 function toggleList(id, silent = false) {
@@ -1278,7 +2009,7 @@ function toggleList(id, silent = false) {
   const adding = !state.list.has(id);
   if (adding) state.list.add(id);
   else state.list.delete(id);
-  storage.set('nexa-list', [...state.list]);
+  persistActiveProfile();
   document.getElementById('list-count').textContent = state.list.size;
   document.querySelectorAll(`[data-action="toggle-list"][data-id="${id}"]`).forEach((button) => {
     button.classList.toggle('in-list', adding);
@@ -1299,7 +2030,7 @@ function toggleLike(id) {
   const liking = !state.liked.has(id);
   if (liking) state.liked.add(id);
   else state.liked.delete(id);
-  storage.set('nexa-liked', [...state.liked]);
+  persistActiveProfile();
   const likeButton = document.getElementById('detail-like');
   likeButton.classList.toggle('liked', liking);
   likeButton.setAttribute('aria-pressed', String(liking));
@@ -1348,6 +2079,34 @@ function updateActiveNavigation() {
   });
 }
 
+function resetSearchFilters() {
+  state.searchFilters = { type: 'todos', genre: 'Todos', year: 'todos', rating: 0 };
+}
+
+function getSearchYears() {
+  return [...new Set(currentCatalog().map((item) => String(item.year)))].sort((a, b) => Number(b) - Number(a));
+}
+
+function searchFiltersView() {
+  const filters = state.searchFilters;
+  const types = [['todos', 'Todos'], ['filme', 'Filmes'], ['serie', 'Séries'], ['documentario', 'Documentários']];
+  const ratings = [[0, 'Qualquer nota'], [7, 'Nota 7+'], [8, 'Nota 8+'], [9, 'Nota 9+']];
+  const sorts = [['relevancia', 'Mais relevantes'], ['recentes', 'Mais recentes'], ['avaliacao', 'Melhor avaliados'], ['a-z', 'Título (A–Z)']];
+  const genres = getGenres();
+  const years = getSearchYears();
+  const active = filters.type !== 'todos' || filters.genre !== 'Todos' || filters.year !== 'todos' || Number(filters.rating) > 0;
+  const options = (values, selected) => values.map(([value, label]) => `<option value="${value}" ${String(selected) === String(value) ? 'selected' : ''}>${label}</option>`).join('');
+  return `
+    <div class="search-filters" role="group" aria-label="Filtros da busca">
+      <label class="search-filter"><span>Tipo</span><select class="sort-select" data-search-filter="type">${options(types, filters.type)}</select></label>
+      <label class="search-filter"><span>Gênero</span><select class="sort-select" data-search-filter="genre">${options(genres.map((genre) => [genre, genre]), filters.genre)}</select></label>
+      <label class="search-filter"><span>Ano</span><select class="sort-select" data-search-filter="year">${options([['todos', 'Qualquer ano'], ...years.map((year) => [year, year])], filters.year)}</select></label>
+      <label class="search-filter"><span>Nota</span><select class="sort-select" data-search-filter="rating">${options(ratings, filters.rating)}</select></label>
+      <label class="search-filter"><span>Ordenar</span><select class="sort-select" data-search-sort>${options(sorts, state.sort)}</select></label>
+      <button class="filter-reset" type="button" data-search-reset ${active ? '' : 'disabled'}>Limpar filtros</button>
+    </div>`;
+}
+
 function openSearch() {
   searchInput.focus();
   searchInput.select();
@@ -1360,6 +2119,7 @@ function handleSearch(query) {
     if (state.view !== 'busca') {
       state.previousView = state.view;
       state.genre = 'Todos';
+      resetSearchFilters();
     }
     state.view = 'busca';
     updateActiveNavigation();
@@ -1367,10 +2127,12 @@ function handleSearch(query) {
     mainContent.innerHTML = `
       <section class="section-view">
         <header class="section-header"><div><p class="eyebrow">Resultados</p><h1>${state.query ? `Busca por “${escapeHtml(state.query)}”` : 'Busca'}</h1><p>${items.length} ${items.length === 1 ? 'resultado encontrado' : 'resultados encontrados'}.</p></div></header>
-        ${items.length ? `<div class="media-grid">${items.map((item) => posterCard(item)).join('')}</div>` : `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('search')}</span><h2>Nada encontrado</h2><p>Experimente outro título, gênero ou pessoa do elenco.</p></div></div>`}
+        ${searchFiltersView()}
+        ${items.length ? `<div class="media-grid">${items.map((item) => posterCard(item)).join('')}</div>` : `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('search')}</span><h2>Nada encontrado</h2><p>Experimente outro título, gênero ou pessoa do elenco.</p><button class="button button-red" type="button" data-search-reset>Limpar filtros</button></div></div>`}
       </section>`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } else if (state.view === 'busca') {
+    resetSearchFilters();
     renderView(state.previousView || 'home');
   }
 }
@@ -1405,7 +2167,7 @@ function saveProgress() {
   }
   state.progress[progressKey || item.id] = entry;
   if (episodeIndex !== null && item.drive) state.progress[item.id] = entry;
-  storage.set('nexa-progress', state.progress);
+  persistActiveProfile();
 }
 
 function setQuality(value) {
@@ -1444,11 +2206,44 @@ function scheduleControlsHide() {
   clearTimeout(state.hideControlsTimer);
   shell.classList.remove('controls-hidden');
   state.hideControlsTimer = window.setTimeout(() => {
-    if (!videoPlayer.paused) shell.classList.add('controls-hidden');
+    if (!videoPlayer.paused && subtitleMenu.hidden) shell.classList.add('controls-hidden');
   }, 2800);
 }
 
 document.addEventListener('click', (event) => {
+  const albumTarget = event.target.closest('[data-album]');
+  if (albumTarget) {
+    const album = state.musicAlbums.find((entry) => entry.id === albumTarget.dataset.album);
+    if (album) {
+      state.activeAlbum = album;
+      renderAlbumView(album);
+    }
+    return;
+  }
+  if (event.target.closest('[data-album-back]')) {
+    state.activeAlbum = null;
+    state.activeTrackIndex = -1;
+    renderMusicView();
+    return;
+  }
+  const trackTarget = event.target.closest('[data-track]');
+  if (trackTarget) {
+    playAlbumTrack(trackTarget.dataset.track, Number(trackTarget.dataset.trackIndex));
+    return;
+  }
+  const albumPlayTarget = event.target.closest('[data-play-album]');
+  if (albumPlayTarget) {
+    playAlbumTrack(albumPlayTarget.dataset.playAlbum, 0);
+    return;
+  }
+  if (event.target.closest('[data-local-settings]')) {
+    openSettings();
+    window.setTimeout(() => {
+      document.querySelector('.local-settings')?.scrollIntoView({ block: 'start' });
+      document.getElementById('local-root')?.focus({ preventScroll: true });
+    }, 60);
+    return;
+  }
   const actionTarget = event.target.closest('[data-action]');
   if (actionTarget) {
     const { action, id } = actionTarget.dataset;
@@ -1555,10 +2350,256 @@ document.getElementById('player-quality').addEventListener('click', () => {
   setQuality(state.quality === 'HD' ? '4K' : 'HD');
   showToast(`Qualidade alterada para ${state.quality}`, 'success');
 });
+subtitleButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (subtitleMenu.hidden) openSubtitleMenu();
+  else closeSubtitleMenu();
+});
+document.getElementById('subtitle-close').addEventListener('click', closeSubtitleMenu);
+document.getElementById('subtitle-upload').addEventListener('click', () => subtitleFileInput.click());
+
+async function saveActiveSubtitleToHd() {
+  const target = localSubtitleTarget();
+  const subtitle = collectSubtitles().find((candidate) => candidate.id === activeSubtitleId);
+  if (!target || !subtitle) {
+    showToast('Carregue uma legenda antes de salvar no HD.', 'error');
+    return;
+  }
+  try {
+    const text = subtitle.text ?? await fetchSubtitleText(subtitle);
+    const response = await fetch(localApi('/api/local/subtitle/upload'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: target.rootKey, path: target.path, lang: subtitle.lang || 'pt', content: text })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const saved = {
+      id: `local-sub-${Date.now()}`,
+      label: subtitle.label || 'Legenda',
+      lang: subtitle.lang || 'pt',
+      source: 'local-server',
+      name: data.name,
+      url: data.url
+    };
+    const owner = state.activeVideo.episodeFile || state.activeVideo.item;
+    const list = owner.subtitles || (owner.subtitles = []);
+    if (!list.some((candidate) => candidate.url === saved.url)) list.push(saved);
+    closeSubtitleMenu();
+    renderSubtitleMenu();
+    await activateSubtitle(saved.id);
+    showToast(`Legenda salva no HD: ${data.name}`, 'success');
+  } catch (error) {
+    showToast(error.message || 'Não foi possível salvar a legenda no HD.', 'error');
+  }
+}
+
+subtitleSaveHd.addEventListener('click', saveActiveSubtitleToHd);
+
+subtitleSearchOpen.addEventListener('click', () => {
+  const target = localSubtitleTarget();
+  if (!target) return;
+  closeSubtitleMenu();
+  subtitleSearchInput.value = target.title || '';
+  subtitleResults.innerHTML = '';
+  document.getElementById('subtitle-search-hint').textContent = `Buscando legendas para “${target.title}”. Escolha uma para baixar e salvar ao lado do filme no HD.`;
+  subtitleSearchDialog.showModal();
+  document.body.classList.add('modal-open');
+  window.setTimeout(() => subtitleSearchInput.focus(), 60);
+});
+
+const omdbDialog = document.getElementById('omdb-dialog');
+const omdbResults = document.getElementById('omdb-results');
+const omdbQuery = document.getElementById('omdb-dialog-query');
+
+document.getElementById('detail-omdb').addEventListener('click', () => {
+  const item = getItem(state.activeItem?.id);
+  if (!item?.local) return;
+  omdbQuery.value = item.title.replace(/\(\d{4}\)/, '').trim();
+  omdbResults.innerHTML = '';
+  omdbDialog.showModal();
+  document.body.classList.add('modal-open');
+  window.setTimeout(() => omdbQuery.focus(), 60);
+});
+
+document.getElementById('omdb-dialog-close').addEventListener('click', () => omdbDialog.close());
+omdbDialog.addEventListener('close', () => {
+  document.body.classList.remove('modal-open');
+});
+
+document.getElementById('omdb-dialog-run').addEventListener('click', async () => {
+  const title = omdbQuery.value.trim();
+  if (!title) return;
+  omdbResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OMDb...</li>';
+  try {
+    const response = await fetch(localApi(`/api/local/omdb/candidates?title=${encodeURIComponent(title)}`), { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+    if (!candidates.length) {
+      omdbResults.innerHTML = '<li class="subtitle-result-empty">Nada encontrado. Tente o título original.</li>';
+      return;
+    }
+    omdbResults.innerHTML = candidates.map((candidate) => `
+      <li>
+        <button type="button" data-omdb-choose="${candidate.imdbId}">
+          <strong>${escapeHtml(candidate.title)}</strong>
+          <small>${escapeHtml(candidate.year || '')}${candidate.type ? ` • ${candidate.type}` : ''}</small>
+        </button>
+      </li>`).join('');
+  } catch (error) {
+    omdbResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(error.message || 'Falha na busca.')}</li>`;
+  }
+});
+
+omdbResults.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-omdb-choose]');
+  if (!button) return;
+  const item = getItem(state.activeItem?.id);
+  if (!item?.local) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(localApi('/api/local/omdb/choose'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: item.rootKey, path: item.fileRel, imdbId: button.dataset.omdbChoose })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadLocalLibrary({ silent: true });
+    omdbDialog.close();
+    const updated = getItem(item.id);
+    if (updated) openDetails(updated.id);
+    showToast('Filme identificado. Metadados atualizados.', 'success');
+  } catch (error) {
+    showToast(error.message || 'Não foi possível salvar a escolha.', 'error');
+    button.disabled = false;
+  }
+});
+
+document.getElementById('subtitle-search-close').addEventListener('click', () => subtitleSearchDialog.close());
+subtitleSearchDialog.addEventListener('close', () => {
+  document.body.classList.remove('modal-open');
+});
+
+document.getElementById('subtitle-search-run').addEventListener('click', async () => {
+  const target = localSubtitleTarget();
+  const title = subtitleSearchInput.value.trim();
+  if (!title) {
+    subtitleResults.innerHTML = '<li class="subtitle-result-empty">Digite o título do filme.</li>';
+    return;
+  }
+  subtitleResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OpenSubtitles...</li>';
+  const params = new URLSearchParams({ title });
+  if (target?.year) params.set('year', String(target.year));
+  if (target?.rootKey) params.set('root', target.rootKey);
+  if (target?.path) params.set('path', target.path);
+  try {
+    const response = await fetch(localApi(`/api/local/subtitle/search?${params.toString()}`), { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const results = Array.isArray(data.results) ? data.results : [];
+    if (!results.length) {
+      subtitleResults.innerHTML = '<li class="subtitle-result-empty">Nenhuma legenda encontrada. Tente o título original em inglês.</li>';
+      return;
+    }
+    subtitleResults.innerHTML = results.map((result) => `
+      <li>
+        <button type="button" data-subtitle-download="${result.id}" data-lang="${result.lang || 'pt'}">
+          <strong>${escapeHtml(result.name || 'Legenda')}</strong>
+          <small>${escapeHtml(result.fileName || '')}</small>
+          <span class="subtitle-result-meta">${escapeHtml(result.lang || 'pt')}${result.hearingImpaired ? ' • SDH' : ''}${result.downloads ? ` • ${result.downloads} downloads` : ''}</span>
+        </button>
+      </li>`).join('');
+  } catch (error) {
+    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(error.message || 'Falha na busca.')}</li>`;
+  }
+});
+
+subtitleResults.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-subtitle-download]');
+  if (!button) return;
+  const target = localSubtitleTarget();
+  if (!target) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(localApi('/api/local/subtitle/download'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subtitleId: button.dataset.subtitleDownload,
+        link: button.dataset.link || '',
+        lang: button.dataset.lang || 'pt',
+        root: target.rootKey,
+        path: target.path
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const subtitle = {
+      id: `local-sub-${Date.now()}`,
+      label: 'Legenda (baixada)',
+      lang: button.dataset.lang || 'pt',
+      source: 'local-server',
+      name: data.name,
+      url: data.url
+    };
+    const owner = state.activeVideo.episodeFile || state.activeVideo.item;
+    const list = owner.subtitles || (owner.subtitles = []);
+    if (!list.some((candidate) => candidate.url === subtitle.url)) list.push(subtitle);
+    subtitleSearchDialog.close();
+    renderSubtitleMenu();
+    await activateSubtitle(subtitle.id);
+    showToast(`Legenda baixada e salva no HD: ${data.name}`, 'success');
+  } catch (error) {
+    showToast(error.message || 'Não foi possível baixar a legenda.', 'error');
+    button.disabled = false;
+  }
+});
+subtitleFileInput.addEventListener('change', () => {
+  const file = subtitleFileInput.files?.[0];
+  subtitleFileInput.value = '';
+  loadSubtitleFile(file);
+});
+subtitleMenuList.addEventListener('click', (event) => {
+  const option = event.target.closest('[data-subtitle]');
+  if (!option) return;
+  const id = option.dataset.subtitle;
+  if (id) {
+    closeSubtitleMenu();
+    activateSubtitle(id);
+  } else {
+    disableSubtitles();
+  }
+});
+document.addEventListener('click', (event) => {
+  if (subtitleMenu.hidden) return;
+  if (event.target.closest('#subtitle-menu') || event.target.closest('#player-subtitles')) return;
+  closeSubtitleMenu();
+});
 videoPlayer.addEventListener('error', () => {
   const active = state.activeVideo;
+  if (!active) {
+    showToast('Não foi possível carregar o vídeo', 'error');
+    return;
+  }
+  if (active.fallbackTried) {
+    showToast('Não foi possível carregar o vídeo', 'error');
+    return;
+  }
+  const localTranscode = active.episodeFile?.transcodeUrl || active.item?.transcodeUrl;
+  if (localTranscode) {
+    active.fallbackTried = true;
+    const saved = state.progress[currentPlaybackKey()];
+    const start = saved?.seconds ? `&start=${Math.floor(saved.seconds)}` : '';
+    videoPlayer.src = `${localTranscode}${start}`;
+    videoPlayer.load();
+    if (state.autoplay) videoPlayer.play().catch(() => {});
+    showToast('Transcodificando o vídeo do HD...', 'success');
+    return;
+  }
   const fileId = active?.episodeFile?.fileId || active?.item?.driveFileId;
-  if (!active || !fileId || active.fallbackTried) {
+  if (!fileId) {
     showToast('Não foi possível carregar o vídeo', 'error');
     return;
   }
@@ -1589,8 +2630,14 @@ videoPlayer.addEventListener('ended', () => {
 });
 document.getElementById('player-shell').addEventListener('mousemove', scheduleControlsHide);
 document.getElementById('player-shell').addEventListener('mouseleave', () => {
-  if (!videoPlayer.paused) document.getElementById('player-shell').classList.add('controls-hidden');
+  if (!videoPlayer.paused && subtitleMenu.hidden) document.getElementById('player-shell').classList.add('controls-hidden');
 });
+
+musicAudio.addEventListener('ended', playNextTrack);
+musicAudio.addEventListener('error', () => {
+  if (musicAudio.getAttribute('src')) showToast('Não foi possível tocar esta música.', 'error');
+});
+document.getElementById('music-close').addEventListener('click', stopMusic);
 
 searchInput.addEventListener('input', (event) => handleSearch(event.target.value));
 document.getElementById('search-form').addEventListener('submit', (event) => {
@@ -1603,29 +2650,63 @@ document.getElementById('search-clear').addEventListener('click', () => {
   searchInput.focus();
 });
 document.addEventListener('change', (event) => {
-  if (event.target.id !== 'sort-select') return;
-  state.sort = event.target.value;
-  browseView();
+  if (event.target.id === 'sort-select') {
+    state.sort = event.target.value;
+    browseView();
+    return;
+  }
+  const searchFilter = event.target.closest('[data-search-filter]');
+  if (searchFilter) {
+    const key = searchFilter.dataset.searchFilter;
+    state.searchFilters[key] = key === 'rating' ? Number(searchFilter.value) : searchFilter.value;
+    handleSearch(state.query);
+    return;
+  }
+  if (event.target.closest('[data-search-sort]')) {
+    state.sort = event.target.value;
+    handleSearch(state.query);
+  }
 });
+
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('[data-search-reset]')) return;
+  resetSearchFilters();
+  if (state.query) handleSearch(state.query);
+});
+
+function isTypingTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]'));
+}
 
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
     openSearch();
   }
+  if (event.key === '/' && !isTypingTarget(event.target) && !document.querySelector('dialog[open]')) {
+    event.preventDefault();
+    openSearch();
+  }
   if (event.key === 'Escape' && playerDialog.open) {
     event.preventDefault();
-    closePlayer();
+    if (!subtitleMenu.hidden) closeSubtitleMenu();
+    else closePlayer();
   }
   if (playerDialog.open && !detailsDialog.open) {
-    if (event.code === 'Space') {
+    if (event.code === 'Space' || event.key.toLowerCase() === 'k') {
       event.preventDefault();
       togglePlay();
     }
-    if (event.key === 'ArrowRight') skip(10);
-    if (event.key === 'ArrowLeft') skip(-10);
+    if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'l') skip(10);
+    if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'j') skip(-10);
     if (event.key.toLowerCase() === 'm') toggleMute();
     if (event.key.toLowerCase() === 'f') toggleFullscreen();
+    if (event.key.toLowerCase() === 'c') {
+      event.preventDefault();
+      if (subtitleMenu.hidden) openSubtitleMenu();
+      else closeSubtitleMenu();
+    }
   }
 });
 
@@ -1669,6 +2750,7 @@ function openSettings() {
   autoplaySwitch.setAttribute('aria-checked', String(state.autoplay));
   document.getElementById('settings-theme').textContent = document.body.classList.contains('light-theme') ? 'Tema escuro' : 'Tema claro';
   updateDriveSettingsUI();
+  updateLocalSettingsUI();
   settingsDialog.showModal();
   document.body.classList.add('modal-open');
 }
@@ -1687,6 +2769,99 @@ document.getElementById('drive-nav').addEventListener('click', () => {
 });
 document.getElementById('drive-connect').addEventListener('click', connectDrive);
 document.getElementById('drive-disconnect').addEventListener('click', disconnectDrive);
+document.getElementById('local-nav').addEventListener('click', () => {
+  closeSidebar();
+  openSettings();
+  window.setTimeout(() => {
+    document.querySelector('.local-settings')?.scrollIntoView({ block: 'start' });
+    document.getElementById('local-root')?.focus({ preventScroll: true });
+  }, 60);
+});
+document.getElementById('local-scan').addEventListener('click', scanLocalLibrary);
+
+document.getElementById('local-server').addEventListener('change', (event) => {
+  const value = String(event.target.value || '').trim().replace(/\/+$/, '');
+  if (value) storage.set('nexa-local-server', value);
+  else storage.set('nexa-local-server', '');
+  updateLocalSettingsUI();
+  showToast(value ? `Servidor local: ${value}` : 'Usando o endereço padrão do servidor local.', 'success');
+});
+
+document.getElementById('omdb-settings-save').addEventListener('click', async () => {
+  const status = document.getElementById('omdb-settings-status');
+  const payload = { omdbApiKey: document.getElementById('omdb-api-key').value.trim() };
+  status.textContent = 'Salvando...';
+  try {
+    const response = await fetch(localApi('/api/local/omdb/settings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    status.textContent = data.hasOmdbKey
+      ? 'Chave salva no servidor local. Use “Atualizar metadados” para aplicar aos filmes.'
+      : 'Chave removida.';
+    state.localConfig.hasOmdbKey = Boolean(data.hasOmdbKey);
+    updateLocalSettingsUI();
+    showToast('Chave do OMDb salva.', 'success');
+  } catch (error) {
+    status.textContent = error.message || 'Não foi possível salvar a chave.';
+  }
+});
+
+document.getElementById('local-omdb-enrich').addEventListener('click', async () => {
+  const button = document.getElementById('local-omdb-enrich');
+  button.disabled = true;
+  setLocalStatus('Atualizando metadados no OMDb...');
+  try {
+    const response = await fetch(localApi('/api/local/omdb/enrich'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    showToast(`Metadados atualizados em ${data.updated || 0} filmes.`, 'success');
+    await loadLocalLibrary({ silent: true });
+  } catch (error) {
+    setLocalStatus(error.message || 'Falha ao atualizar metadados.', 'error');
+    showToast('Não foi possível atualizar os metadados.', 'error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById('subtitle-settings-save').addEventListener('click', async () => {
+  const status = document.getElementById('subtitle-settings-status');
+  const payload = {
+    subtitleApiKey: document.getElementById('subtitle-api-key').value.trim(),
+    subtitleUser: document.getElementById('subtitle-user').value.trim(),
+    subtitlePassword: document.getElementById('subtitle-password').value
+  };
+  status.textContent = 'Salvando...';
+  try {
+    const response = await fetch(localApi('/api/local/subtitle/settings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    status.textContent = data.hasKey
+      ? 'Chave salva no servidor local. A busca online está ativa.'
+      : 'Chave removida. A busca online precisa da chave da API.';
+    showToast('Credenciais de legendas salvas.', 'success');
+  } catch (error) {
+    status.textContent = error.message || 'Não foi possível salvar as chaves.';
+  }
+});
+document.getElementById('local-clear').addEventListener('click', disconnectLocal);
+document.getElementById('local-root').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  scanLocalLibrary();
+});
 ['drive-folder', 'drive-key'].forEach((id) => {
   document.getElementById(id).addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
@@ -1728,6 +2903,339 @@ document.getElementById('mark-read').addEventListener('click', () => {
 
 const profileButton = document.getElementById('mini-profile-button');
 const profilePopover = document.getElementById('profile-popover');
+const profilesDialog = document.getElementById('profiles-dialog');
+const profilesManagerList = document.getElementById('profiles-manager-list');
+const profileForm = document.getElementById('profile-form');
+const profileNameInput = document.getElementById('profile-name-input');
+const profilePinInput = document.getElementById('profile-pin-input');
+const profileColorInput = document.getElementById('profile-color-input');
+const profileKidsToggle = document.getElementById('profile-kids-toggle');
+const profileSaveButton = document.getElementById('profile-save');
+const profileCancelButton = document.getElementById('profile-cancel');
+const profileFormNote = document.getElementById('profile-form-note');
+const pinDialog = document.getElementById('pin-dialog');
+const pinForm = document.getElementById('pin-form');
+const pinInput = document.getElementById('pin-input');
+const pinError = document.getElementById('pin-error');
+let editingProfileId = null;
+let formKids = false;
+let pinRequest = null;
+
+function profileMeta(profile) {
+  const bits = [];
+  if (profile.id === profiles[0].id) bits.push('Perfil principal');
+  bits.push(profile.kids ? 'Infantil' : 'Adulto');
+  if (profile.pin) bits.push('PIN ativo');
+  return bits.join(' · ');
+}
+
+function updateProfileUI() {
+  const profile = activeProfile();
+  if (!profile) return;
+  document.querySelectorAll('[data-view="musica"]').forEach((element) => {
+    element.hidden = Boolean(profile.kids);
+  });
+  const initials = profileInitials(profile.name);
+  const meta = profile.kids ? 'Perfil infantil' : (profile.id === profiles[0].id ? 'Perfil principal' : 'Perfil');
+  document.getElementById('profile-avatar').textContent = initials;
+  document.getElementById('profile-avatar').style.background = profile.color;
+  document.getElementById('profile-name').textContent = profile.name;
+  document.getElementById('profile-subtitle').textContent = meta;
+  profileButton.textContent = initials;
+  profileButton.style.background = profile.color;
+  document.getElementById('popover-avatar').textContent = initials;
+  document.getElementById('popover-avatar').style.background = profile.color;
+  document.getElementById('popover-name').textContent = profile.name;
+  document.getElementById('popover-subtitle').textContent = meta;
+  renderProfileSwitcher();
+}
+
+function renderProfileSwitcher() {
+  const list = document.getElementById('profile-switch-list');
+  list.innerHTML = profiles.map((profile) => {
+    const active = profile.id === activeProfileId;
+    return `<button class="profile-switch-item ${active ? 'active' : ''}" type="button" data-profile-switch="${profile.id}" aria-pressed="${active}">
+      <span class="avatar small" style="background:${profile.color}">${profileInitials(profile.name)}</span>
+      <span class="profile-switch-copy"><strong>${escapeHtml(profile.name)}</strong><small>${profile.kids ? 'Infantil' : 'Perfil'}${profile.pin ? ' · PIN' : ''}</small></span>
+      ${active ? icon('check') : ''}
+    </button>`;
+  }).join('');
+}
+
+function loadProfileState(profile) {
+  state.list = new Set(profile.list || []);
+  state.liked = new Set(profile.liked || []);
+  state.progress = { ...(profile.progress || {}) };
+  document.getElementById('list-count').textContent = state.list.size;
+}
+
+function applyProfileSwitch(profile) {
+  if (!profile) return;
+  persistActiveProfile();
+  activeProfileId = profile.id;
+  loadProfileState(profile);
+  state.genre = 'Todos';
+  state.query = '';
+  state.view = state.view === 'busca' ? (state.previousView || 'home') : state.view;
+  if (profile.kids) {
+    if (!musicPlayerBar.hidden) stopMusic();
+    state.activeAlbum = null;
+    if (state.view === 'musica') state.view = 'home';
+  }
+  searchInput.value = '';
+  searchBox.classList.remove('has-value');
+  if (detailsDialog.open) detailsDialog.close();
+  if (playerDialog.open) closePlayer();
+  saveProfiles();
+  updateProfileUI();
+  updateActiveNavigation();
+  refreshCurrentView();
+  showToast(`Agora você está no perfil de ${profile.name}`, 'success');
+}
+
+function switchProfile(id) {
+  const target = profiles.find((profile) => profile.id === id);
+  if (!target) return;
+  profilePopover.hidden = true;
+  if (target.id === activeProfileId) return;
+  const current = activeProfile();
+  if (current?.kids && current.pin) {
+    requestPin('Digite o PIN do perfil infantil para trocar de perfil.', current.pin).then((ok) => {
+      if (ok) applyProfileSwitch(target);
+    });
+    return;
+  }
+  applyProfileSwitch(target);
+}
+
+function requestPin(message, expected) {
+  return new Promise((resolve) => {
+    if (pinRequest) {
+      pinRequest.resolve(false);
+      pinRequest = null;
+    }
+    pinRequest = { resolve, expected };
+    document.getElementById('pin-message').textContent = message;
+    pinInput.value = '';
+    pinError.hidden = true;
+    if (!pinDialog.open) pinDialog.showModal();
+    document.body.classList.add('modal-open');
+    window.setTimeout(() => pinInput.focus(), 40);
+  });
+}
+
+function finishPin(result) {
+  if (!pinRequest) return;
+  const { resolve } = pinRequest;
+  pinRequest = null;
+  if (pinDialog.open) pinDialog.close();
+  document.body.classList.remove('modal-open');
+  resolve(result);
+}
+
+pinForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const value = pinInput.value.trim();
+  if (value && value === pinRequest?.expected) {
+    finishPin(true);
+  } else {
+    pinError.hidden = false;
+    pinInput.value = '';
+    pinInput.focus();
+  }
+});
+
+pinInput.addEventListener('input', () => {
+  pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4);
+});
+
+document.getElementById('pin-cancel').addEventListener('click', () => finishPin(false));
+pinDialog.addEventListener('close', () => {
+  document.body.classList.remove('modal-open');
+  if (pinRequest) {
+    const { resolve } = pinRequest;
+    pinRequest = null;
+    resolve(false);
+  }
+});
+
+function setProfileFormNote(message, type = '') {
+  profileFormNote.textContent = message;
+  profileFormNote.className = `settings-note${type ? ` is-${type}` : ''}`;
+}
+
+function resetProfileForm() {
+  editingProfileId = null;
+  formKids = false;
+  profileForm.reset();
+  profileColorInput.value = PROFILE_COLORS[profiles.length % PROFILE_COLORS.length];
+  profileKidsToggle.setAttribute('aria-checked', 'false');
+  document.getElementById('profile-form-title').textContent = 'Novo perfil';
+  profileSaveButton.textContent = 'Adicionar perfil';
+  profileCancelButton.hidden = true;
+  setProfileFormNote('');
+}
+
+function renderProfilesManager() {
+  profilesManagerList.innerHTML = profiles.map((profile) => {
+    const active = profile.id === activeProfileId;
+    return `<div class="profile-manage-row ${active ? 'active' : ''}">
+      <span class="avatar" style="background:${profile.color}">${profileInitials(profile.name)}</span>
+      <div class="profile-manage-copy"><strong>${escapeHtml(profile.name)}${active ? ' <span class="profile-current">Em uso</span>' : ''}</strong><small>${profileMeta(profile)}</small></div>
+      ${profile.kids ? `<span class="profile-badge">${icon('lock')} Infantil</span>` : ''}
+      <div class="profile-manage-actions">
+        <button class="button button-secondary" type="button" data-profile-edit="${profile.id}">Editar</button>
+        <button class="button button-ghost" type="button" data-profile-delete="${profile.id}" ${profiles.length === 1 ? 'disabled' : ''}>Excluir</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showProfilesDialog() {
+  profilePopover.hidden = true;
+  resetProfileForm();
+  renderProfilesManager();
+  if (!profilesDialog.open) profilesDialog.showModal();
+  document.body.classList.add('modal-open');
+  window.setTimeout(() => profileNameInput.focus(), 60);
+}
+
+function openProfilesDialog() {
+  const current = activeProfile();
+  if (current?.kids && current.pin) {
+    requestPin('Digite o PIN para gerenciar os perfis.', current.pin).then((ok) => {
+      if (ok) showProfilesDialog();
+    });
+    return;
+  }
+  showProfilesDialog();
+}
+
+function editProfile(id) {
+  const profile = profiles.find((candidate) => candidate.id === id);
+  if (!profile) return;
+  editingProfileId = id;
+  formKids = profile.kids;
+  profileNameInput.value = profile.name;
+  profilePinInput.value = profile.pin;
+  profileColorInput.value = profile.color;
+  profileKidsToggle.setAttribute('aria-checked', String(profile.kids));
+  document.getElementById('profile-form-title').textContent = 'Editar perfil';
+  profileSaveButton.textContent = 'Salvar alterações';
+  profileCancelButton.hidden = false;
+  setProfileFormNote('');
+  profileNameInput.focus();
+}
+
+function deleteProfile(id) {
+  if (profiles.length <= 1) return;
+  const profile = profiles.find((candidate) => candidate.id === id);
+  if (!profile) return;
+  if (!window.confirm(`Excluir o perfil “${profile.name}”? Listas, curtidas e progresso serão removidos.`)) return;
+  const index = profiles.findIndex((candidate) => candidate.id === id);
+  profiles.splice(index, 1);
+  if (activeProfileId === id) {
+    activeProfileId = profiles[0].id;
+    loadProfileState(activeProfile());
+    state.genre = 'Todos';
+    state.query = '';
+    state.view = state.view === 'busca' ? 'home' : state.view;
+    searchInput.value = '';
+    searchBox.classList.remove('has-value');
+    updateActiveNavigation();
+    refreshCurrentView();
+  }
+  if (editingProfileId === id) resetProfileForm();
+  saveProfiles();
+  updateProfileUI();
+  renderProfilesManager();
+  showToast(`Perfil “${profile.name}” excluído`, 'success');
+}
+
+profileKidsToggle.addEventListener('click', () => {
+  formKids = !formKids;
+  profileKidsToggle.setAttribute('aria-checked', String(formKids));
+  if (!formKids) setProfileFormNote('');
+});
+
+profileForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const name = profileNameInput.value.trim();
+  if (!name) {
+    setProfileFormNote('Informe um nome para o perfil.', 'error');
+    profileNameInput.focus();
+    return;
+  }
+  const pin = profilePinInput.value.replace(/\D/g, '');
+  if (pin && pin.length !== 4) {
+    setProfileFormNote('O PIN deve ter exatamente 4 dígitos.', 'error');
+    profilePinInput.focus();
+    return;
+  }
+  if (formKids && pin.length !== 4) {
+    setProfileFormNote('Defina um PIN de 4 dígitos para o perfil infantil.', 'error');
+    profilePinInput.focus();
+    return;
+  }
+  const color = profileColorInput.value;
+  if (editingProfileId) {
+    const profile = profiles.find((candidate) => candidate.id === editingProfileId);
+    if (!profile) return;
+    profile.name = name.slice(0, 32);
+    profile.kids = formKids;
+    profile.pin = pin;
+    profile.color = color;
+    saveProfiles();
+    updateProfileUI();
+    renderProfilesManager();
+    if (profile.id === activeProfileId) {
+      state.genre = 'Todos';
+      refreshCurrentView();
+    }
+    resetProfileForm();
+    showToast('Perfil atualizado', 'success');
+    return;
+  }
+  const newProfile = normalizeProfile({
+    id: `perfil-${Date.now().toString(36)}-${profiles.length}`,
+    name,
+    kids: formKids,
+    pin,
+    color,
+    progress: {}
+  }, profiles.length);
+  profiles.push(newProfile);
+  saveProfiles();
+  updateProfileUI();
+  renderProfilesManager();
+  resetProfileForm();
+  showToast(`Perfil de ${newProfile.name} criado`, 'success');
+});
+
+profileCancelButton.addEventListener('click', resetProfileForm);
+profilesManagerList.addEventListener('click', (event) => {
+  const editButton = event.target.closest('[data-profile-edit]');
+  if (editButton) {
+    editProfile(editButton.dataset.profileEdit);
+    return;
+  }
+  const deleteButton = event.target.closest('[data-profile-delete]');
+  if (deleteButton) deleteProfile(deleteButton.dataset.profileDelete);
+});
+document.getElementById('profile-switch-list').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-profile-switch]');
+  if (button) switchProfile(button.dataset.profileSwitch);
+});
+document.getElementById('profile-manage').addEventListener('click', openProfilesDialog);
+document.getElementById('profiles-close').addEventListener('click', () => profilesDialog.close());
+profilesDialog.addEventListener('click', (event) => {
+  if (event.target === profilesDialog) profilesDialog.close();
+});
+profilesDialog.addEventListener('close', () => {
+  document.body.classList.remove('modal-open');
+  resetProfileForm();
+});
+
 function toggleProfilePopover() {
   profilePopover.hidden = !profilePopover.hidden;
   notificationsPopover.hidden = true;
@@ -1824,10 +3332,13 @@ registerServiceWorker();
 setTheme(storage.get('nexa-theme', 'dark') === 'light');
 setAutoplay(state.autoplay);
 applyNotificationsRead(storage.get('nexa-notifications-read', false));
+saveProfiles();
+updateProfileUI();
 document.getElementById('list-count').textContent = state.list.size;
 updateActiveNavigation();
 renderHome();
 restoreDriveLibrary();
+restoreLocalLibrary();
 
 const deepLink = window.location.hash.match(/^#\/titulo\/([^/]+)$/);
 if (deepLink) {

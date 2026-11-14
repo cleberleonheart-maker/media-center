@@ -29,6 +29,13 @@ jobs:
         with:
           enablement: true
 
+      - name: Prepare artifact
+        run: |
+          rm -rf .data __pycache__ .git .github
+          rm -f local_server.py local_library.py
+          rm -rf .pytest_cache
+          find . -name '*.pyc' -delete
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
