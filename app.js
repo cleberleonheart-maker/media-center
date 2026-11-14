@@ -1245,7 +1245,11 @@ async function loadLocalLibrary(options = {}) {
     const albums = localizeAlbums(Array.isArray(data.music?.albums) ? data.music.albums : []);
     applyLocalItems(items);
     state.musicAlbums = albums;
-    state.localConfig = { root: data.root || '', stats: data.stats || {}, at: data.at || 0 };
+    state.localConfig = { root: data.root || '', stats: data.stats || {}, at: data.at || 0, accessible: data.accessible !== false };
+    if (data.accessible === false) {
+      setLocalStatus('HD externo não está montado. Reconecte o pen drive e reinicie o servidor local.', 'error');
+      showToast('HD externo não está montado (EIO). Reconecte o drive.', 'error');
+    }
     try {
       const configResponse = await fetch(localApi('/api/local/config'), { cache: 'no-store' });
       if (configResponse.ok) {

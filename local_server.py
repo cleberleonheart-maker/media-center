@@ -83,6 +83,7 @@ def public_library(library: dict | None, scanning: bool = False) -> dict:
             "version": 2,
             "at": 0,
             "root": _config["root"],
+            "accessible": root_accessible(),
             "scanning": scanning,
             "items": [],
             "music": {"albums": []},
@@ -93,6 +94,7 @@ def public_library(library: dict | None, scanning: bool = False) -> dict:
         "version": library.get("version", 2),
         "at": library.get("at", 0),
         "root": library.get("root", _config["root"]),
+        "accessible": root_accessible(),
         "scanning": scanning,
         "items": library.get("items", []),
         "music": library.get("music", {"albums": []}),
@@ -147,6 +149,29 @@ def scan_library(root: str | None = None) -> dict:
         )
     )
     return library
+
+
+def root_accessible(root: str | None = None) -> bool:
+    target = root or _config.get("root") or ""
+    if not target or not os.path.isdir(target):
+        return False
+    try:
+        with os.scandir(target) as entries:
+            names = [entry.name for entry in entries]
+    except OSError:
+        return False
+    if not names:
+        return False
+    for name in ("filmes", "series", "musicas"):
+        path = os.path.join(target, name)
+        try:
+            if not os.path.isdir(path):
+                continue
+            with os.scandir(path) as entries:
+                next(entries, None)
+        except OSError:
+            return False
+    return True
 
 
 def current_library() -> dict | None:
@@ -588,6 +613,7 @@ class Handler(BaseHTTPRequestHandler):
                     "root": _config["root"],
                     "ffmpeg": ffmpeg_available(),
                     "hasLibrary": bool(current_library()),
+                    "accessible": root_accessible(),
                 })
                 return
             if pathname == "/api/local/media":
