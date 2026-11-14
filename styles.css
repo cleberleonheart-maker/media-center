@@ -3383,3 +3383,24 @@ body.light-theme .music-player {
   font-size: 12px;
   list-style: none;
 }
+
+.boost-button {
+  position: relative;
+}
+
+.boost-button span {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  background: var(--red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.boost-button.active {
+  color: var(--red);
+}

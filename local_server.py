@@ -693,7 +693,58 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.isfile(path):
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "arquivo não encontrado"})
             return
+        boost = 1.0
+        try:
+            boost = max(1.0, min(4.0, float((query.get("boost") or ["1"])[0])))
+        except ValueError:
+            boost = 1.0
+        if boost > 1.0:
+            self.stream_amplified(path, boost)
+            return
         self.stream_file(path)
+
+    def stream_amplified(self, path: str, boost: float) -> None:
+        if not ffmpeg_available():
+            self.stream_file(path)
+            return
+        args = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-i", path,
+            "-map", "0:v:0?", "-map", "0:a:0?",
+            "-c:v", "copy",
+            "-af", f"volume={boost:.2f}",
+            "-c:a", "aac", "-b:a", "192k", "-ac", "2",
+            "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+            "-f", "mp4", "pipe:1",
+        ]
+        try:
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+        except OSError:
+            self.stream_file(path)
+            return
+        self.send_response(HTTPStatus.OK)
+        self.cors()
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            while True:
+                chunk = proc.stdout.read(64 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait(timeout=5)
 
     def api_subtitle(self, query: dict) -> None:
         path = self.resolve_query_path(query)
@@ -1014,6 +1065,7 @@ class Handler(BaseHTTPRequestHandler):
                 "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
                 "-crf", "23", "-pix_fmt", "yuv420p", "-g", "48", "-sc_threshold", "0",
                 "-c:a", "aac", "-b:a", "160k", "-ac", "2",
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
                 "-movflags", "frag_keyframe+empty_moov+default_base_moof",
                 "-f", "mp4", "pipe:1",
             ]

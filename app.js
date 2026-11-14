@@ -445,6 +445,7 @@ const state = {
   driveConfig: null,
   localConfig: null,
   musicAlbums: [],
+  audioBoost: Number(storage.get('nexa-audio-boost', 1)) || 1,
   activeAlbum: null,
   activeTrackIndex: -1,
   hideControlsTimer: null
@@ -503,6 +504,8 @@ const subtitleSearchInput = document.getElementById('subtitle-search-query');
 const subtitleResults = document.getElementById('subtitle-results');
 const subtitleSearchOpen = document.getElementById('subtitle-search-open');
 const subtitleSaveHd = document.getElementById('subtitle-save-hd');
+const playerBoostButton = document.getElementById('player-boost');
+const playerBoostLabel = document.getElementById('player-boost-label');
 const searchInput = document.getElementById('search-input');
 const searchBox = document.querySelector('.search-box');
 const toastRegion = document.getElementById('toast-region');
@@ -1824,7 +1827,11 @@ function openPlayer(id, episodeIndex = null, options = {}) {
   state.activeVideo = { item, episodeIndex: resolvedEpisode, seasonIndex: resolvedSeason, episodeFile, progressKey, fallbackTried: false, fromDetails };
   if (resolvedEpisode !== null && item.seasons) state.activeSeason = resolvedSeason;
   videoPlayer.poster = item.backdrop;
-  videoPlayer.src = episodeFile?.video || item.video;
+  const initialSource = episodeFile?.video || item.video;
+  const boostSeparator = initialSource && initialSource.includes('?') ? '&' : '?';
+  videoPlayer.src = state.audioBoost > 1 && typeof initialSource === 'string' && initialSource.includes('/api/local/media')
+    ? `${initialSource}${boostSeparator}boost=${state.audioBoost}`
+    : initialSource;
   document.getElementById('player-title').textContent = item.title;
   document.getElementById('player-episode').textContent = resolvedEpisode !== null && item.seasons
     ? `${item.seasons[resolvedSeason].name} • Episódio ${episodeFile?.number ?? resolvedEpisode + 1}`
@@ -1844,11 +1851,59 @@ function openPlayer(id, episodeIndex = null, options = {}) {
     document.body.classList.add('modal-open');
   }
   updatePlayerNextButton();
+  updateBoostButton();
   const shouldAutoplay = options.autoplay ?? state.autoplay;
   if (shouldAutoplay) {
     const promise = videoPlayer.play();
     if (promise) promise.catch(() => showToast('Clique em reproduzir para iniciar o vídeo', 'success'));
   }
+}
+
+const BOOST_STEPS = [1, 1.5, 2, 3];
+
+function localMediaUrl(item, episodeFile) {
+  const url = episodeFile?.video || item?.video || '';
+  return typeof url === 'string' && url.includes('/api/local/media') ? url : '';
+}
+
+function updateBoostButton() {
+  if (!playerBoostButton) return;
+  const active = state.activeVideo;
+  const isLocal = Boolean(localMediaUrl(active?.item, active?.episodeFile));
+  playerBoostButton.hidden = !isLocal;
+  playerBoostLabel.textContent = `${state.audioBoost}×`;
+  playerBoostButton.classList.toggle('active', state.audioBoost > 1);
+  playerBoostButton.setAttribute('aria-label', `Amplificar áudio (${state.audioBoost}×)`);
+}
+
+function applyAudioBoost(factor) {
+  const active = state.activeVideo;
+  const mediaUrl = localMediaUrl(active?.item, active?.episodeFile);
+  if (!mediaUrl) {
+    showToast('Amplificação disponível apenas para filmes do HD local.', 'error');
+    return;
+  }
+  const time = Number.isFinite(videoPlayer.currentTime) ? videoPlayer.currentTime : 0;
+  const wasPlaying = !videoPlayer.paused;
+  const separator = mediaUrl.includes('?') ? '&' : '?';
+  const base = mediaUrl.split('&boost=')[0];
+  state.audioBoost = factor;
+  storage.set('nexa-audio-boost', factor);
+  videoPlayer.src = factor > 1 ? `${base}${separator}boost=${factor}` : base;
+  videoPlayer.load();
+  const resume = () => {
+    if (time > 1) videoPlayer.currentTime = time;
+    if (wasPlaying) videoPlayer.play().catch(() => {});
+  };
+  videoPlayer.addEventListener('loadedmetadata', resume, { once: true });
+  updateBoostButton();
+  showToast(factor > 1 ? `Áudio amplificado ${factor}×` : 'Áudio normal', 'success');
+}
+
+function cycleAudioBoost() {
+  const index = BOOST_STEPS.indexOf(state.audioBoost);
+  const next = BOOST_STEPS[(index + 1) % BOOST_STEPS.length] || 1;
+  applyAudioBoost(next);
 }
 
 function closePlayer() {
@@ -2357,6 +2412,7 @@ document.getElementById('player-center-play').addEventListener('click', togglePl
 document.getElementById('player-back').addEventListener('click', () => skip(-10));
 document.getElementById('player-forward').addEventListener('click', () => skip(10));
 document.getElementById('player-mute').addEventListener('click', toggleMute);
+playerBoostButton.addEventListener('click', cycleAudioBoost);
 document.getElementById('player-fullscreen').addEventListener('click', toggleFullscreen);
 document.getElementById('player-progress').addEventListener('input', (event) => {
   if (videoPlayer.duration) videoPlayer.currentTime = (Number(event.target.value) / 100) * videoPlayer.duration;
@@ -2747,6 +2803,10 @@ document.addEventListener('keydown', (event) => {
       event.preventDefault();
       if (subtitleMenu.hidden) openSubtitleMenu();
       else closeSubtitleMenu();
+    }
+    if (event.key.toLowerCase() === 'b' && !playerBoostButton.hidden) {
+      event.preventDefault();
+      cycleAudioBoost();
     }
   }
 });
