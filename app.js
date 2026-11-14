@@ -1100,13 +1100,23 @@ function updateLocalNavCount() {
   badge.hidden = !count;
 }
 
-function localServerBase() {
-  const configured = String(storage.get('nexa-local-server', '') || '').trim();
-  if (configured) return configured.replace(/\/+$/, '');
-  if (window.location.protocol === 'http:') {
-    return `${window.location.protocol}//${window.location.host}`;
-  }
+function resolveLocalServerBase({ protocol, host, configured } = {}) {
+  if (protocol === 'http:') return `${protocol}//${host}`;
+  const value = String(configured || '').trim();
+  if (value) return value.replace(/\/+$/, '');
   return 'http://127.0.0.1:8090';
+}
+
+function localServerBase() {
+  return resolveLocalServerBase({
+    protocol: window.location.protocol,
+    host: window.location.host,
+    configured: storage.get('nexa-local-server', '')
+  });
+}
+
+function localServerHint() {
+  return `Servidor local: ${localServerBase()}`;
 }
 
 function localFetchSignal(timeout = 30000) {
@@ -1263,11 +1273,15 @@ async function loadLocalLibrary(options = {}) {
     else refreshCurrentView();
     if (!options.silent) showToast(`HD local: ${items.length} títulos encontrados`, 'success');
   } catch (error) {
+    const httpsPage = window.location.protocol === 'https:';
+    const message = httpsPage
+      ? 'Páginas https bloqueiam o servidor local. Abra o NEXA em http://100.115.92.199:8090.'
+      : 'Servidor local indisponível. Rode python3 local_server.py e recarregue.';
     if (!options.silent) {
-      setLocalStatus('Servidor local indisponível. Inicie com python3 local_server.py.', 'error');
-      showToast('Não foi possível ler o HD local. O servidor está rodando?', 'error');
+      setLocalStatus(message, 'error');
+      showToast(message, 'error');
     } else if (document.getElementById('settings-dialog')?.open) {
-      setLocalStatus('Servidor local indisponível. Inicie com python3 local_server.py.', 'error');
+      setLocalStatus(message, 'error');
     }
   } finally {
     localLoading = false;
@@ -2413,9 +2427,9 @@ subtitleSearchOpen.addEventListener('click', () => {
   closeSubtitleMenu();
   subtitleSearchInput.value = title.replace(/\(\d{4}\)/, '').trim();
   subtitleResults.innerHTML = '';
-  document.getElementById('subtitle-search-hint').textContent = target
+  document.getElementById('subtitle-search-hint').textContent = `${target
     ? `Buscando legendas para “${title}”. Escolha uma para baixar e salvar ao lado do filme no HD.`
-    : `Buscando legendas para “${title}”. Escolha uma para usar agora (para salvar no HD, abra o filme do HD local).`;
+    : `Buscando legendas para “${title}”. Escolha uma para usar agora (para salvar no HD, abra o filme do HD local).`} ${localServerHint()}`;
   if (!subtitleSearchDialog.open) subtitleSearchDialog.showModal();
   document.body.classList.add('modal-open');
   window.setTimeout(() => subtitleSearchInput.focus(), 60);
@@ -2526,7 +2540,11 @@ document.getElementById('subtitle-search-run').addEventListener('click', async (
         </button>
       </li>`).join('');
   } catch (error) {
-    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(error.message || 'Falha na busca.')}</li>`;
+    const message = error.name === 'AbortError'
+      ? 'Tempo esgotado ao falar com o servidor local.'
+      : (error.message || 'Falha na busca.');
+    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}<br>Abra o NEXA em <code>http://100.115.92.199:8090</code> e rode <code>python3 local_server.py</code>.</li>`;
+    showToast(message, 'error');
   }
 });
 
@@ -2572,7 +2590,10 @@ subtitleResults.addEventListener('click', async (event) => {
     await activateSubtitle(subtitle.id);
     showToast(data.saved ? `Legenda baixada e salva no HD: ${data.name}` : 'Legenda baixada e aplicada.', 'success');
   } catch (error) {
-    showToast(error.message || 'Não foi possível baixar a legenda.', 'error');
+    const message = error.name === 'AbortError' ? 'Tempo esgotado ao baixar a legenda.' : (error.message || 'Não foi possível baixar a legenda.');
+    console.error('legenda', error);
+    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}</li>`;
+    showToast(message, 'error');
     button.disabled = false;
   }
 });
