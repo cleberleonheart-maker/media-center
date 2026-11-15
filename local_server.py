@@ -103,33 +103,33 @@ def public_library(library: dict | None, scanning: bool = False) -> dict:
     }
 
 
-def start_background_scan(root: str | None = None) -> bool:
+def start_background_scan(root: str | None = None, full: bool = False) -> bool:
     global _scan_pending
     with _scan_start_lock:
         if _scan_pending or lib._scan_state.get("scanning"):
             return False
         _scan_pending = True
     target = lib.detect_root(root or _config.get("root"))
-    threading.Thread(target=_run_background_scan, args=(target,), daemon=True).start()
+    threading.Thread(target=_run_background_scan, args=(target, full), daemon=True).start()
     return True
 
 
-def _run_background_scan(root: str) -> None:
+def _run_background_scan(root: str, full: bool = False) -> None:
     global _scan_pending
     try:
-        scan_library(root)
+        scan_library(root, full=full)
     except Exception as error:  # noqa: BLE001
         log(f"falha ao escanear: {error}")
     finally:
         _scan_pending = False
 
 
-def scan_library(root: str | None = None) -> dict:
+def scan_library(root: str | None = None, full: bool = False) -> dict:
     global _catalog
     target = lib.detect_root(root or _config.get("root"))
-    log(f"escaneando {target} ...")
+    log(f"escaneando {target}{' (completo)' if full else ''} ...")
     started = time.time()
-    library = lib.scan(target)
+    library = lib.scan(target, full=full)
     try:
         enriched = enrich_movies_with_omdb(library)
         if enriched:
@@ -637,6 +637,9 @@ class Handler(BaseHTTPRequestHandler):
             if pathname == "/api/local/art":
                 self.api_art(query)
                 return
+            if pathname == "/api/local/art-cache":
+                self.api_art_cache(query)
+                return
             if pathname.startswith("/api/"):
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "rota não encontrada"})
                 return
@@ -660,10 +663,11 @@ class Handler(BaseHTTPRequestHandler):
             if not os.path.isdir(target):
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": f"pasta não encontrada: {target}"})
                 return
-            _config = {"root": target}
+            full = bool(body.get("full"))
+            _config = {**_config, "root": target}
             save_config(_config)
-            started = start_background_scan(target)
-            self.send_json(HTTPStatus.ACCEPTED, {"scanning": True, "started": started, "root": target})
+            started = start_background_scan(target, full=full)
+            self.send_json(HTTPStatus.ACCEPTED, {"scanning": True, "started": started, "root": target, "full": full})
             return
         if parsed.path == "/api/local/subtitle/download":
             self.api_subtitle_download(read_body(self))
@@ -796,10 +800,9 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as error:
                 self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
                 return
-        if path.lower().endswith(".srt"):
-            self.send_text(HTTPStatus.OK, lib.srt_to_vtt(text), "text/vtt; charset=utf-8")
-        else:
-            self.send_text(HTTPStatus.OK, text, "text/vtt; charset=utf-8")
+        extension = os.path.splitext(path)[1].lower()
+        vtt = lib.subtitle_to_vtt(text, extension)
+        self.send_text(HTTPStatus.OK, vtt, "text/vtt; charset=utf-8")
 
     def api_subtitle_search(self, query: dict) -> None:
         title = str((query.get("title") or [""])[0]).strip()
@@ -1063,6 +1066,17 @@ class Handler(BaseHTTPRequestHandler):
         kind = (query.get("kind") or ["poster"])[0]
         svg = lib._placeholder_svg(title, kind if kind in ("poster", "backdrop", "cover") else "poster")
         self.send_bytes(HTTPStatus.OK, svg, "image/svg+xml; charset=utf-8", cache="public, max-age=86400")
+
+    def api_art_cache(self, query: dict) -> None:
+        name = (query.get("name") or [""])[0]
+        if not re.fullmatch(r"[a-f0-9]{6,40}\.(jpg|jpeg|png|webp)", str(name).lower()):
+            self.send_json(HTTPStatus.NOT_FOUND, {"error": "arte não encontrada"})
+            return
+        path = DATA_DIR / "art-cache" / str(name).lower()
+        if not path.is_file():
+            self.send_json(HTTPStatus.NOT_FOUND, {"error": "arte não encontrada"})
+            return
+        self.serve_file(str(path), cache="public, max-age=604800")
 
     def api_transcode(self, query: dict) -> None:
         path = self.resolve_query_path(query)

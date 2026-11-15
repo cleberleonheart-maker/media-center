@@ -1203,6 +1203,8 @@ function updateLocalSettingsUI() {
   if (enrichButton) enrichButton.hidden = !state.localConfig?.hasOmdbKey;
   const hasItems = catalog.some((item) => item.local);
   clearButton.hidden = !hasItems;
+  const fullScanButton = document.getElementById('local-scan-full');
+  if (fullScanButton) fullScanButton.hidden = !state.localConfig?.hasLibrary || localLoading;
   if (localLoading) {
     scanButton.disabled = true;
     setLocalStatus('Lendo o HD... isso pode levar alguns minutos na primeira vez.');
@@ -1323,6 +1325,30 @@ async function scanLocalLibrary() {
   } catch (error) {
     setLocalStatus(error.message || 'Falha ao escanear o HD.', 'error');
     showToast('Falha ao escanear o HD local.', 'error');
+  } finally {
+    localLoading = false;
+    updateLocalSettingsUI();
+  }
+}
+
+async function rescanLocalLibrary() {
+  if (localLoading) return;
+  localLoading = true;
+  updateLocalSettingsUI();
+  setLocalStatus('Reanalisando tudo no HD... no 9p isso pode demorar bastante.');
+  try {
+    const response = await fetch(localApi('/api/local/scan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full: true })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    setLocalStatus('Reanálise iniciada no servidor local.');
+    await loadLocalLibrary();
+  } catch (error) {
+    setLocalStatus(error.message || 'Falha ao reanlisar o HD.', 'error');
+    showToast('Falha ao reanlisar o HD local.', 'error');
   } finally {
     localLoading = false;
     updateLocalSettingsUI();
@@ -2899,6 +2925,7 @@ document.getElementById('local-nav').addEventListener('click', () => {
   }, 60);
 });
 document.getElementById('local-scan').addEventListener('click', scanLocalLibrary);
+document.getElementById('local-scan-full')?.addEventListener('click', rescanLocalLibrary);
 
 document.getElementById('local-server').addEventListener('change', (event) => {
   const value = String(event.target.value || '').trim().replace(/\/+$/, '');

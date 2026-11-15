@@ -25,7 +25,17 @@ BROWSER_VIDEO_EXTS = {".mp4", ".m4v", ".webm", ".ogv", ".ogg"}
 AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma"}
 BROWSER_AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
-SUB_EXTS = {".srt", ".vtt"}
+SUB_EXTS = {".srt", ".vtt", ".ass", ".ssa"}
+MP4_EXTS = {".mp4", ".m4v", ".m4a", ".m4b", ".aac", ".alac"}
+MIME_EXT = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+ART_CACHE_DIR = Path(__file__).resolve().parent / ".data" / "art-cache"
+POSTER_NAMES = (
+    "poster", "folder", "cover", "front", "album", "albumart",
+    "artwork", "thumb", "movie", "show",
+)
+BACKDROP_NAMES = ("fanart", "backdrop", "background", "banner", "landscape")
+ART_DIRS = ("art", "Art", "posters", "Posters", "covers", "Covers")
+SUB_DIRS = {"subs", "sub", "subtitles", "subtitle", "legendas", "legenda"}
 
 SKIP_DIRS = {
     "system volume information", "$recycle.bin", "#recycle", "lost+found",
@@ -102,6 +112,7 @@ def placeholder_url(title: str, kind: str = "poster") -> str:
 def _clean_text(text: str) -> str:
     text = str(text or "")
     text = TAKEOUT_SUFFIX.sub("", text)
+    text = re.sub(r"\[[^\]]*\]", " ", text)
     text = re.sub(r"\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi|wmv|flv|ts|m2ts|mpg|mpeg)$", " ", text, flags=re.IGNORECASE)
     text = RELEASE_TAGS.sub(" ", text)
     text = re.sub(r"[._]+", " ", text)
@@ -131,11 +142,20 @@ def _display(text: str) -> str:
 
 
 def _split_year(text: str) -> tuple[str, int | None]:
-    match = YEAR_RE.search(text)
-    year = int(match.group(1)) if match else None
-    if match:
-        text = f"{text[:match.start()]} {text[match.end():]}"
-    title = _display(text) or _display(text.replace(".", " "))
+    raw = str(text or "")
+    limit = time.localtime().tm_year + 1
+    matches = [match for match in YEAR_RE.finditer(raw) if 1900 <= int(match.group(1)) <= limit]
+    year = None
+    title_part = raw
+    if matches:
+        chosen = matches[-1]
+        year = int(chosen.group(1))
+        title_part = raw[:chosen.start()]
+        tail = raw[chosen.end():]
+        if not title_part.strip() and tail.strip():
+            title_part = tail
+    title = _display(title_part) or _display(raw)
+    title = re.sub(r"[\(\[\{]\s*$", "", title).strip()
     return title, year
 
 
@@ -164,15 +184,15 @@ def _subtitle_core(name: str) -> str:
     return _norm(low)
 
 
-def _find_subtitles(video_rel: str, root_key: str, directory_files: dict[str, list[str]]) -> list[dict]:
+def _find_subtitles(video_rel: str, root_key: str, subtitle_rels: list[str]) -> list[dict]:
     rel_dir = os.path.dirname(video_rel)
-    siblings = directory_files.get(rel_dir, [])
     stem = os.path.splitext(os.path.basename(video_rel))[0]
     core = _norm(_clean_text(stem))
     year_match = YEAR_RE.search(stem)
     year = year_match.group(1) if year_match else ""
     found = []
-    for name in siblings:
+    for sub_rel in subtitle_rels:
+        name = os.path.basename(sub_rel)
         sub_stem = os.path.splitext(name)[0]
         sub_core = _subtitle_core(name)
         if not sub_core:
@@ -184,7 +204,7 @@ def _find_subtitles(video_rel: str, root_key: str, directory_files: dict[str, li
             ok = year in name and _norm(_clean_text(stem).replace(year, ""))[:10] in sub_core
         if not ok:
             continue
-        rel = os.path.join(rel_dir, name) if rel_dir else name
+        rel = os.path.join(rel_dir, sub_rel) if rel_dir else sub_rel
         lang, label = _subtitle_info(name)
         forced = "forced" in name.lower()
         sdh = bool(re.search(r"\b(sdh|cc)\b", name, re.IGNORECASE))
@@ -200,22 +220,85 @@ def _find_subtitles(video_rel: str, root_key: str, directory_files: dict[str, li
     return found
 
 
-def _pick_image(directory: str, stem: str = "") -> str | None:
+def _collect_subtitles(current: str, files: list[str], rel_dir: str) -> tuple[str, list[str]]:
+    owner = rel_dir
+    if os.path.basename(current).lower() in SUB_DIRS:
+        owner = os.path.dirname(rel_dir)
+        owner = "" if owner == "." else owner
+    entries = []
+    for name in files:
+        if os.path.splitext(name)[1].lower() not in SUB_EXTS:
+            continue
+        entries.append(os.path.join(rel_dir, name) if rel_dir else name)
+    return owner, entries
+
+
+def _list_images(directory: str) -> list[str]:
     try:
-        entries = [entry for entry in os.scandir(directory) if entry.is_file()]
+        with os.scandir(directory) as entries:
+            names = [
+                entry.name for entry in entries
+                if entry.is_file() and os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS
+            ]
     except OSError:
-        return None
-    by_name = {entry.name.lower(): entry.path for entry in entries if os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS}
-    if stem:
-        normalized_stem = _norm(_clean_text(stem))
-        for name, path in by_name.items():
-            if _norm(os.path.splitext(name)[0]) == normalized_stem:
-                return path
-    for wanted in ("poster", "folder", "cover", "front", "album", "albumart", "artwork", "fanart", "backdrop", "thumb", "movie", "show"):
-        for name, path in by_name.items():
-            if os.path.splitext(name)[0].lower() == wanted:
-                return path
-    return next(iter(by_name.values()), None)
+        return []
+    return sorted(names)
+
+
+def _pick_artwork(directory: str, stem: str = "") -> tuple[str | None, str | None]:
+    poster = None
+    backdrop = None
+    normalized_stem = _norm(_clean_text(stem)) if stem else ""
+    try:
+        with os.scandir(directory) as entries:
+            listing = [(entry.name, entry.is_file(), entry.is_dir()) for entry in entries]
+    except OSError:
+        listing = []
+    folders = [(directory, sorted(name for name, is_file, _is_dir in listing
+                                 if is_file and os.path.splitext(name)[1].lower() in IMAGE_EXTS))]
+    for wanted in ART_DIRS:
+        for name, _is_file, is_dir in listing:
+            if name == wanted and is_dir:
+                folders.append((os.path.join(directory, name), _list_images(os.path.join(directory, name))))
+                break
+    for current, images in folders:
+        if not images:
+            continue
+        if not poster:
+            for wanted in POSTER_NAMES:
+                for name in images:
+                    if os.path.splitext(name)[0].lower() == wanted:
+                        poster = os.path.join(current, name)
+                        break
+                if poster:
+                    break
+            if not poster and normalized_stem:
+                for name in images:
+                    if _norm(os.path.splitext(name)[0]) == normalized_stem:
+                        poster = os.path.join(current, name)
+                        break
+        if not backdrop:
+            for wanted in BACKDROP_NAMES:
+                for name in images:
+                    if os.path.splitext(name)[0].lower() == wanted:
+                        backdrop = os.path.join(current, name)
+                        break
+                if backdrop:
+                    break
+        if poster and backdrop:
+            break
+    if not poster and not backdrop:
+        images = _list_images(directory)
+        if images:
+            poster = os.path.join(directory, images[0])
+    if not poster:
+        poster = backdrop
+    return poster, backdrop
+
+
+def _pick_image(directory: str, stem: str = "") -> str | None:
+    poster, _backdrop = _pick_artwork(directory, stem)
+    return poster
 
 
 def _walk_files(root: str):
@@ -236,6 +319,8 @@ def _safe_inside(base: str, rel: str) -> str | None:
 
 _TAG_CACHE: dict[str, dict] = {}
 _TAG_CACHE_FILE = Path(__file__).resolve().parent / ".data" / "tag-cache.json"
+_DIR_SIG_CACHE: dict[str, dict] = {}
+_DIR_SIG_FILE = Path(__file__).resolve().parent / ".data" / "dir-signatures.json"
 
 
 def _file_signature(path: str) -> str:
@@ -244,6 +329,55 @@ def _file_signature(path: str) -> str:
         return f"{stat.st_size}:{int(stat.st_mtime)}"
     except OSError:
         return ""
+
+
+def load_dir_signatures() -> None:
+    try:
+        with open(_DIR_SIG_FILE, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return
+    if isinstance(data, dict):
+        _DIR_SIG_CACHE.update({key: value for key, value in data.items() if isinstance(value, dict)})
+
+
+def save_dir_signatures() -> None:
+    try:
+        _DIR_SIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _DIR_SIG_FILE.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(_DIR_SIG_CACHE, handle, ensure_ascii=False)
+        os.replace(tmp, _DIR_SIG_FILE)
+    except OSError:
+        pass
+
+
+def _directory_signatures(directory: str, names: list[str], full: bool = False) -> dict[str, str]:
+    """Assinaturas (tamanho:mtime) dos arquivos de uma pasta.
+
+    O HD externo via 9p custa ~150 ms por stat; quando a pasta não mudou
+    (mesmo mtime e mesmos nomes) reaproveitamos as assinaturas salvas.
+    """
+    try:
+        dir_stat = os.stat(directory)
+    except OSError:
+        return {}
+    key = str(directory)
+    ordered = sorted(names)
+    cached = _DIR_SIG_CACHE.get(key) or {}
+    if not full and cached.get("mtime") == int(dir_stat.st_mtime) and cached.get("names") == ordered:
+        return cached.get("sigs") or {}
+    signatures = {}
+    for name in names:
+        signature = _file_signature(os.path.join(directory, name))
+        if signature:
+            signatures[name] = signature
+    _DIR_SIG_CACHE[key] = {
+        "mtime": int(dir_stat.st_mtime),
+        "names": ordered,
+        "sigs": signatures,
+    }
+    return signatures
 
 
 def load_tag_cache() -> None:
@@ -274,82 +408,432 @@ def _read_tags_cached(path: str, signature: str = "") -> dict:
     cached = _TAG_CACHE.get(path)
     if cached and cached.get("sig") == signature:
         return cached.get("tags") or {}
-    tags = _read_id3(path)
-    _TAG_CACHE[path] = {"sig": signature, "tags": tags}
+    tags = _read_audio_tags(path)
+    entry = _TAG_CACHE.get(path) or {}
+    entry["sig"] = signature
+    entry["tags"] = tags
+    _TAG_CACHE[path] = entry
     return tags
 
 
-def _read_id3(path: str) -> dict:
+def _decode_id3_text(raw: bytes, encoding: int) -> str:
+    if encoding == 1:
+        text = raw.decode("utf-16", "ignore")
+    elif encoding == 2:
+        text = raw.decode("utf-16-be", "ignore")
+    elif encoding == 3:
+        text = raw.decode("utf-8", "ignore")
+    else:
+        text = raw.decode("latin-1", "ignore")
+    return text.replace("\x00", " ").strip()
+
+
+def _id3_frames(body: bytes, version: int) -> list[tuple[str, bytes, bool]]:
+    frames = []
+    offset = 0
+    header_size = 6 if version == 2 else 10
+    while offset + header_size <= len(body):
+        if version == 2:
+            frame_id = body[offset:offset + 3].decode("ascii", "ignore")
+            if not re.fullmatch(r"[A-Z0-9]{3}", frame_id):
+                break
+            size = int.from_bytes(body[offset + 3:offset + 6], "big")
+        else:
+            frame_id = body[offset:offset + 4].decode("ascii", "ignore")
+            if not re.fullmatch(r"[A-Z0-9]{4}", frame_id):
+                break
+            if version == 4:
+                size = (((body[offset + 4] & 0x7F) << 21) | ((body[offset + 5] & 0x7F) << 14)
+                        | ((body[offset + 6] & 0x7F) << 7) | (body[offset + 7] & 0x7F))
+            else:
+                size = int.from_bytes(body[offset + 4:offset + 8], "big")
+        data_start = offset + header_size
+        if size <= 0:
+            break
+        if data_start + size > len(body):
+            frames.append((frame_id, body[data_start:], False))
+            break
+        frames.append((frame_id, body[data_start:data_start + size], True))
+        offset = data_start + size
+    return frames
+
+
+def _id3_picture(frame_id: str, payload: bytes) -> tuple[bytes, str, int] | None:
+    if not payload:
+        return None
+    encoding = payload[0]
+    pos = 1
+    if frame_id == "APIC":
+        end = payload.find(b"\x00", pos)
+        if end < 0:
+            return None
+        mime = payload[pos:end].decode("latin-1", "ignore").strip() or "image/jpeg"
+        pos = end + 1
+    else:
+        mime = "image/png" if payload[pos:pos + 3].upper() == b"PNG" else "image/jpeg"
+        pos += 3
+    if pos >= len(payload):
+        return None
+    picture_type = payload[pos]
+    pos += 1
+    if encoding in (1, 2):
+        while pos + 1 < len(payload) and not (payload[pos] == 0 and payload[pos + 1] == 0):
+            pos += 2
+        pos += 2
+    else:
+        end = payload.find(b"\x00", pos)
+        pos = len(payload) if end < 0 else end + 1
+    image = payload[pos:]
+    if not image:
+        return None
+    return image, mime, picture_type
+
+
+def _parse_id3(data: bytes) -> tuple[dict, tuple[bytes, str] | None, bool]:
     tags = {}
+    art = None
+    fallback = None
+    truncated = False
+    if len(data) < 10 or data[:3] != b"ID3":
+        return tags, art, truncated
+    version = data[3]
+    flags = data[5]
+    size = (((data[6] & 0x7F) << 21) | ((data[7] & 0x7F) << 14)
+            | ((data[8] & 0x7F) << 7) | (data[9] & 0x7F))
+    body = data[10:10 + size]
+    if flags & 0x80:
+        body = re.sub(b"\xff\x00", b"\xff", body)
+    wanted = {
+        "TIT2": "title", "TT2": "title",
+        "TPE1": "artist", "TP1": "artist",
+        "TPE2": "albumArtist", "TP2": "albumArtist",
+        "TALB": "album", "TAL": "album",
+        "TRCK": "track", "TRK": "track",
+        "TDRC": "year", "TYER": "year", "TYE": "year",
+        "TCON": "genre", "TCO": "genre",
+    }
+    for frame_id, payload, complete in _id3_frames(body, version):
+        key = wanted.get(frame_id)
+        if key and payload and complete:
+            tags[key] = _decode_id3_text(payload[1:], payload[0])
+        elif frame_id in ("APIC", "PIC") and art is None:
+            if not complete:
+                truncated = True
+                continue
+            picture = _id3_picture(frame_id, payload)
+            if not picture:
+                continue
+            image, mime, picture_type = picture
+            if picture_type == 3:
+                art = (image, mime)
+            elif fallback is None:
+                fallback = (image, mime)
+    return tags, art or fallback, truncated
+
+
+def _parse_vorbis_comment(payload: bytes) -> dict:
+    tags = {}
+    if len(payload) < 8:
+        return tags
+    vendor_len = int.from_bytes(payload[:4], "little")
+    pos = 4 + vendor_len
+    if pos + 4 > len(payload):
+        return tags
+    count = int.from_bytes(payload[pos:pos + 4], "little")
+    pos += 4
+    wanted = {
+        "TITLE": "title", "ARTIST": "artist", "ALBUM": "album",
+        "ALBUMARTIST": "albumArtist", "TRACKNUMBER": "track",
+        "DISCNUMBER": "disk", "DATE": "year", "YEAR": "year", "GENRE": "genre",
+    }
+    for _ in range(count):
+        if pos + 4 > len(payload):
+            break
+        length = int.from_bytes(payload[pos:pos + 4], "little")
+        pos += 4
+        comment = payload[pos:pos + length].decode("utf-8", "ignore")
+        pos += length
+        if "=" not in comment:
+            continue
+        key, value = comment.split("=", 1)
+        target = wanted.get(key.strip().upper())
+        if target:
+            tags[target] = value.strip()
+    return tags
+
+
+def _parse_flac_picture(payload: bytes) -> tuple[bytes, str] | None:
+    if len(payload) < 32:
+        return None
+    pos = 0
+    pos += 4
+    mime_len = int.from_bytes(payload[pos:pos + 4], "big")
+    pos += 4
+    mime = payload[pos:pos + mime_len].decode("latin-1", "ignore") or "image/jpeg"
+    pos += mime_len
+    desc_len = int.from_bytes(payload[pos:pos + 4], "big")
+    pos += 4 + desc_len + 16
+    data_len = int.from_bytes(payload[pos:pos + 4], "big")
+    pos += 4
+    image = payload[pos:pos + data_len]
+    if not image:
+        return None
+    return image, mime
+
+
+def _parse_flac(data: bytes) -> tuple[dict, tuple[bytes, str] | None, bool]:
+    tags = {}
+    art = None
+    truncated = False
+    if data[:4] != b"fLaC":
+        return tags, art, truncated
+    offset = 4
+    while offset + 4 <= len(data):
+        header = data[offset]
+        block_type = header & 0x7F
+        length = int.from_bytes(data[offset + 1:offset + 4], "big")
+        payload = data[offset + 4:offset + 4 + length]
+        offset += 4 + length
+        if block_type == 4:
+            tags.update(_parse_vorbis_comment(payload))
+        elif block_type == 6 and art is None:
+            if offset > len(data):
+                truncated = True
+                break
+            art = _parse_flac_picture(payload)
+        if header & 0x80:
+            break
+    return tags, art, truncated
+
+
+def _mp4_atoms(buf: bytes, start: int, end: int):
+    offset = start
+    while offset + 8 <= end:
+        size = int.from_bytes(buf[offset:offset + 4], "big")
+        atom_type = buf[offset + 4:offset + 8].decode("latin-1", "ignore")
+        header = 8
+        if size == 1:
+            if offset + 16 > end:
+                break
+            size = int.from_bytes(buf[offset + 8:offset + 16], "big")
+            header = 16
+        elif size == 0:
+            size = end - offset
+        if size < header or offset + size > end:
+            break
+        yield atom_type, offset + header, offset + size
+        offset += size
+
+
+def _mp4_moov(path: str) -> bytes | None:
+    try:
+        total = os.path.getsize(path)
+    except OSError:
+        return None
     try:
         with open(path, "rb") as handle:
-            data = handle.read(32 * 1024)
-        if data[:3] == b"ID3" and len(data) > 10:
-            version = data[3]
-            body = data[10:]
             offset = 0
-            wanted = {"TIT2": "title", "TPE1": "artist", "TALB": "album", "TDRC": "year", "TYER": "year", "TRCK": "track"}
-            while offset + 10 <= len(body):
-                frame_id = body[offset:offset + 4]
-                if not re.match(rb"[A-Z0-9]{4}", frame_id):
+            while offset + 8 <= total:
+                handle.seek(offset)
+                header = handle.read(16)
+                if len(header) < 8:
                     break
-                if version == 4:
-                    size = ((body[offset + 4] & 0x7F) << 21) | ((body[offset + 5] & 0x7F) << 14) | ((body[offset + 6] & 0x7F) << 7) | (body[offset + 7] & 0x7F)
-                else:
-                    size = int.from_bytes(body[offset + 4:offset + 8], "big")
-                if size <= 0 or offset + 10 + size > len(body):
+                size = int.from_bytes(header[0:4], "big")
+                atom_type = header[4:8].decode("latin-1", "ignore")
+                header_len = 8
+                if size == 1:
+                    if len(header) < 16:
+                        break
+                    size = int.from_bytes(header[8:16], "big")
+                    header_len = 16
+                elif size == 0:
+                    size = total - offset
+                if size < header_len:
                     break
-                key = frame_id.decode("ascii", "ignore")
-                if key in wanted:
-                    payload = body[offset + 10:offset + 10 + size]
-                    encoding = payload[0] if payload else 0
-                    raw = payload[1:] if payload else b""
-                    if encoding == 1:
-                        text = raw.decode("utf-16", "ignore")
-                    elif encoding == 2:
-                        text = raw.decode("utf-16-be", "ignore")
-                    elif encoding == 3:
-                        text = raw.decode("utf-8", "ignore")
-                    else:
-                        text = raw.decode("latin-1", "ignore")
-                    tags[wanted[key]] = text.replace("\x00", " ").strip()
-                offset += 10 + size
-        elif len(data) >= 128 and data[-128:-125] == b"TAG":
-            tail = data[-128:]
-            tags["title"] = tail[3:33].decode("latin-1", "ignore").strip("\x00 ")
-            tags["artist"] = tail[33:63].decode("latin-1", "ignore").strip("\x00 ")
-            tags["album"] = tail[63:93].decode("latin-1", "ignore").strip("\x00 ")
-            tags["year"] = tail[93:97].decode("latin-1", "ignore").strip("\x00 ")
-        elif data[:4] == b"fLaC":
-            offset = 4
-            while offset + 4 <= len(data):
-                header = data[offset]
-                block_type = header & 0x7F
-                length = int.from_bytes(data[offset + 1:offset + 4], "big")
-                payload = data[offset + 4:offset + 4 + length]
-                offset += 4 + length
-                if block_type == 4 and len(payload) >= 8:
-                    vendor_len = int.from_bytes(payload[:4], "little")
-                    pos = 4 + vendor_len
-                    count = int.from_bytes(payload[pos:pos + 4], "little") if pos + 4 <= len(payload) else 0
-                    pos += 4
-                    for _ in range(count):
-                        if pos + 4 > len(payload):
-                            break
-                        comment_len = int.from_bytes(payload[pos:pos + 4], "little")
-                        comment = payload[pos + 4:pos + 4 + comment_len].decode("utf-8", "ignore")
-                        pos += 4 + comment_len
-                        if "=" in comment:
-                            key, value = comment.split("=", 1)
-                            key = key.strip().upper()
-                            if key in ("TITLE", "ARTIST", "ALBUM", "DATE", "YEAR", "TRACKNUMBER"):
-                                target = "year" if key in ("DATE", "YEAR") else "track" if key == "TRACKNUMBER" else key.lower()
-                                tags[target] = value.strip()
-                if header & 0x80:
-                    break
+                if atom_type == "moov":
+                    handle.seek(offset + header_len)
+                    return handle.read(size - header_len)
+                offset += size
     except OSError:
-        pass
-    return tags
+        return None
+    return None
+
+
+def _parse_mp4(moov: bytes) -> tuple[dict, tuple[bytes, str] | None]:
+    tags = {}
+    art = None
+    ilst = None
+    for atom_type, start, end in _mp4_atoms(moov, 0, len(moov)):
+        if atom_type != "udta":
+            continue
+        for meta_type, meta_start, meta_end in _mp4_atoms(moov, start, end):
+            if meta_type != "meta":
+                continue
+            for ilst_type, ilst_start, ilst_end in _mp4_atoms(moov, meta_start + 4, meta_end):
+                if ilst_type == "ilst":
+                    ilst = moov[ilst_start:ilst_end]
+                    break
+    if ilst is None:
+        return tags, art
+    wanted = {
+        "\u00a9nam": "title", "\u00a9ART": "artist", "\u00a9alb": "album",
+        "aART": "albumArtist", "\u00a9gen": "genre", "\u00a9day": "year",
+        "trkn": "track", "disk": "disk",
+    }
+    for atom_type, start, end in _mp4_atoms(ilst, 0, len(ilst)):
+        payload = None
+        kind = 0
+        for data_type, data_start, data_end in _mp4_atoms(ilst, start, end):
+            if data_type == "data":
+                kind = int.from_bytes(ilst[data_start:data_start + 4], "big") & 0xFFFFFF
+                payload = ilst[data_start + 8:data_end]
+                break
+        if payload is None:
+            continue
+        if atom_type == "covr":
+            if art is None:
+                art = (payload, "image/png" if kind == 14 else "image/jpeg")
+            continue
+        key = wanted.get(atom_type)
+        if not key:
+            continue
+        if key in ("track", "disk"):
+            if len(payload) >= 4:
+                tags[key] = str(int.from_bytes(payload[2:4], "big"))
+            continue
+        text = payload.decode("utf-16-le", "ignore") if kind == 2 else payload.decode("utf-8", "ignore")
+        text = text.replace("\x00", " ").strip()
+        if key == "year":
+            text = text[:4]
+        if text:
+            tags[key] = text
+    return tags, art
+
+
+def _read_id3_file(path: str, want_art: bool = False) -> tuple[dict, tuple[bytes, str] | None]:
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(10)
+            if len(header) < 10 or header[:3] != b"ID3":
+                return {}, None
+            size = (((header[6] & 0x7F) << 21) | ((header[7] & 0x7F) << 14)
+                    | ((header[8] & 0x7F) << 7) | (header[9] & 0x7F))
+            total = min(size + 10, 8 * 1024 * 1024)
+            handle.seek(0)
+            data = handle.read(min(total, 64 * 1024))
+            tags, art, truncated = _parse_id3(data)
+            if want_art and truncated:
+                handle.seek(0)
+                data = handle.read(total)
+                tags, art, _truncated = _parse_id3(data)
+            return tags, art
+    except OSError:
+        return {}, None
+
+
+def _read_flac_file(path: str, want_art: bool = False) -> tuple[dict, tuple[bytes, str] | None]:
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(64 * 1024)
+            tags, art, truncated = _parse_flac(data)
+            if want_art and truncated:
+                handle.seek(0)
+                data = handle.read(8 * 1024 * 1024)
+                tags, art, _truncated = _parse_flac(data)
+            return tags, art
+    except OSError:
+        return {}, None
+
+
+def _read_id3v1(path: str) -> dict:
+    try:
+        size = os.path.getsize(path)
+        if size < 128:
+            return {}
+        with open(path, "rb") as handle:
+            handle.seek(size - 128)
+            tail = handle.read(128)
+    except OSError:
+        return {}
+    if tail[:3] != b"TAG":
+        return {}
+    return {
+        "title": tail[3:33].decode("latin-1", "ignore").strip("\x00 "),
+        "artist": tail[33:63].decode("latin-1", "ignore").strip("\x00 "),
+        "album": tail[63:93].decode("latin-1", "ignore").strip("\x00 "),
+        "year": tail[93:97].decode("latin-1", "ignore").strip("\x00 "),
+    }
+
+
+def _read_audio_tags(path: str) -> dict:
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".flac":
+            tags, _art = _read_flac_file(path)
+            return tags
+        if ext in MP4_EXTS:
+            moov = _mp4_moov(path)
+            if moov is None:
+                return {}
+            tags, _art = _parse_mp4(moov)
+            return tags
+        tags, _art = _read_id3_file(path)
+        if not tags.get("title") and not tags.get("artist"):
+            tags.update(_read_id3v1(path))
+        return tags
+    except OSError:
+        return {}
+
+
+def _extract_embedded_art(path: str) -> tuple[bytes, str] | None:
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".flac":
+            _tags, art = _read_flac_file(path, want_art=True)
+            return art
+        if ext in MP4_EXTS:
+            moov = _mp4_moov(path)
+            if moov is None:
+                return None
+            _tags, art = _parse_mp4(moov)
+            return art
+        _tags, art = _read_id3_file(path, want_art=True)
+        return art
+    except OSError:
+        return None
+
+
+def _art_cache_file(path: str, signature: str) -> str | None:
+    entry = _TAG_CACHE.get(path) or {}
+    if entry.get("sig") == signature:
+        if entry.get("art"):
+            name = entry["art"]
+            if (ART_CACHE_DIR / name).is_file():
+                return name
+        elif entry.get("noArt"):
+            return None
+    art = _extract_embedded_art(path)
+    entry = _TAG_CACHE.get(path) or {}
+    entry["sig"] = signature
+    if not art:
+        entry.pop("art", None)
+        entry["noArt"] = True
+        _TAG_CACHE[path] = entry
+        return None
+    data, mime = art
+    ext = MIME_EXT.get(str(mime).lower().strip(), ".jpg")
+    name = _hash(path + ":" + signature, 20) + ext
+    try:
+        ART_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = ART_CACHE_DIR / (name + ".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, ART_CACHE_DIR / name)
+    except OSError:
+        return None
+    entry.pop("noArt", None)
+    entry["art"] = name
+    _TAG_CACHE[path] = entry
+    return name
 
 
 def _track_number(text: str) -> int | None:
@@ -418,6 +902,70 @@ def srt_to_vtt(text: str) -> str:
     cue = re.sub(r"(\d{2}:\d{2}:\d{2}),(\d{1,3})", lambda m: f"{m.group(1)}.{m.group(2).ljust(3, '0')}", normalized)
     cue = re.sub(r"(\d{2}:\d{2}),(\d{1,3})", lambda m: f"00:{m.group(1)}.{m.group(2).ljust(3, '0')}", cue)
     return "WEBVTT\n\n" + cue + "\n"
+
+
+def _ass_timestamp(value: str) -> str:
+    match = re.fullmatch(r"(\d+):(\d{2}):(\d{2})[.:](\d{1,2})", str(value or "").strip())
+    if not match:
+        return ""
+    return f"{int(match.group(1)):02d}:{match.group(2)}:{match.group(3)}.{match.group(4).ljust(3, '0')[:3]}"
+
+
+def ass_to_vtt(text: str) -> str:
+    lines = str(text or "").replace("\ufeff", "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    in_events = False
+    columns = None
+    cues = []
+    for raw in lines:
+        line = raw.strip()
+        if re.fullmatch(r"\[events\]", line, re.IGNORECASE):
+            in_events = True
+            continue
+        if line.startswith("["):
+            in_events = False
+            continue
+        if not in_events:
+            continue
+        if re.match(r"^format\s*:", line, re.IGNORECASE):
+            columns = [part.strip().lower() for part in line[line.index(":") + 1:].split(",")]
+            continue
+        if not re.match(r"^dialogue\s*:", line, re.IGNORECASE):
+            continue
+        payload = line[line.index(":") + 1:]
+        fields = columns or ["layer", "start", "end", "style", "name", "marginl", "marginr", "marginv", "effect", "text"]
+        start_index = max(0, fields.index("start")) if "start" in fields else 1
+        end_index = max(1, fields.index("end")) if "end" in fields else 2
+        text_index = fields.index("text") if "text" in fields else 9
+        parts = []
+        rest = payload
+        for _ in range(max(0, len(fields) - 1)):
+            comma = rest.find(",")
+            if comma < 0:
+                break
+            parts.append(rest[:comma])
+            rest = rest[comma + 1:]
+        parts.append(rest)
+        if len(parts) <= max(start_index, end_index):
+            continue
+        start = _ass_timestamp(parts[start_index])
+        end = _ass_timestamp(parts[end_index])
+        body = ",".join(parts[text_index:])
+        body = re.sub(r"\{[^}]*\}", "", body)
+        body = body.replace("\\N", "\n").replace("\\n", "\n").replace("\\h", " ")
+        body = re.sub(r"<[^>]+>", "", body).strip()
+        if not start or not end or not body:
+            continue
+        cues.append(f"{start} --> {end}\n{body}")
+    return "WEBVTT\n\n" + "\n\n".join(cues) + "\n"
+
+
+def subtitle_to_vtt(text: str, extension: str) -> str:
+    ext = str(extension or "").lower().lstrip(".")
+    if ext in ("ass", "ssa"):
+        return ass_to_vtt(text)
+    if ext == "vtt":
+        return str(text or "")
+    return srt_to_vtt(text)
 
 
 def _media_type(path: str) -> str:
@@ -495,57 +1043,71 @@ def _video_item(rel: str, root_key: str, title: str, year: int | None, movie: bo
     return common
 
 
-def _scan_movies(root_key: str, root: str) -> tuple[list[dict], dict]:
+def _scan_movies(root_key: str, root: str, full: bool = False) -> tuple[list[dict], dict]:
     items = []
     art = {}
+    videos = []
+    subtitles: dict[str, list[str]] = {}
     for current, files in _walk_files(root):
-        file_set = {os.path.splitext(name)[0]: name for name in files}
-        for name in files:
-            ext = os.path.splitext(name)[1].lower()
-            if ext not in VIDEO_EXTS:
+        rel_dir = os.path.relpath(current, root)
+        rel_dir = "" if rel_dir == "." else rel_dir
+        owner, entries = _collect_subtitles(current, files, rel_dir)
+        if entries:
+            subtitles.setdefault(owner, []).extend(entries)
+        video_names = [name for name in files if os.path.splitext(name)[1].lower() in VIDEO_EXTS]
+        if not video_names:
+            continue
+        signatures = _directory_signatures(current, video_names, full=full)
+        for name in video_names:
+            signature = signatures.get(name) or ""
+            size = int(signature.split(":")[0]) if signature else 0
+            if size < 200 * 1024:
                 continue
-            full = os.path.join(current, name)
-            try:
-                if os.path.getsize(full) < 200 * 1024:
-                    continue
-            except OSError:
-                continue
-            rel = os.path.relpath(full, root)
-            title, year = _movie_title(name)
-            poster_file = _pick_image(current, os.path.splitext(name)[0])
-            poster = placeholder_url(title, "poster")
-            backdrop = placeholder_url(title, "backdrop")
-            if poster_file:
-                rel_art = os.path.relpath(poster_file, root)
-                poster = _art_url(root_key, rel_art.replace(os.sep, "/"))
-                backdrop = poster
-            subs = _find_subtitles(rel, root_key, {os.path.dirname(rel): [entry for entry in files if os.path.splitext(entry)[1].lower() in SUB_EXTS]})
-            item = {
-                "id": f"local-filme-{_hash(root_key + ':' + rel)}",
-                "local": True,
-                "rootKey": root_key,
-                "fileRel": rel.replace(os.sep, "/"),
-                "title": title or os.path.splitext(name)[0],
-                "fileYear": year,
-                "type": "filme",
-                "year": year or time.localtime(os.path.getmtime(full)).tm_year,
-                "duration": "Duração não informada",
-                "maturity": "12+",
-                "match": 96,
-                "rating": "—",
-                "genres": ["Biblioteca local"],
-                "description": f"“{title or name}” está na sua biblioteca do HD local.",
-                "cast": [],
-                "director": "Biblioteca pessoal",
-                "poster": poster,
-                "backdrop": backdrop,
-                "video": _media_url(root_key, rel.replace(os.sep, "/")),
-                "transcodeUrl": _media_url(root_key, rel.replace(os.sep, "/"), transcode=True),
-                "playable": ext in BROWSER_VIDEO_EXTS,
-                "subtitles": subs,
-                "new": False,
-            }
-            items.append(item)
+            videos.append(os.path.join(current, name))
+    for full in videos:
+        name = os.path.basename(full)
+        ext = os.path.splitext(name)[1].lower()
+        rel = os.path.relpath(full, root)
+        current = os.path.dirname(full)
+        title, year = _movie_title(name)
+        poster_file, backdrop_file = _pick_artwork(current, os.path.splitext(name)[0])
+        poster = placeholder_url(title, "poster")
+        backdrop = placeholder_url(title, "backdrop")
+        if poster_file:
+            rel_art = os.path.relpath(poster_file, root)
+            poster = _art_url(root_key, rel_art.replace(os.sep, "/"))
+            backdrop = poster
+        if backdrop_file:
+            rel_backdrop = os.path.relpath(backdrop_file, root)
+            backdrop = _art_url(root_key, rel_backdrop.replace(os.sep, "/"))
+        rel_dir = os.path.dirname(rel)
+        subs = _find_subtitles(rel, root_key, subtitles.get(rel_dir, []))
+        item = {
+            "id": f"local-filme-{_hash(root_key + ':' + rel)}",
+            "local": True,
+            "rootKey": root_key,
+            "fileRel": rel.replace(os.sep, "/"),
+            "title": title or os.path.splitext(name)[0],
+            "fileYear": year,
+            "type": "filme",
+            "year": year or time.localtime(os.path.getmtime(full)).tm_year,
+            "duration": "Duração não informada",
+            "maturity": "12+",
+            "match": 96,
+            "rating": "—",
+            "genres": ["Biblioteca local"],
+            "description": f"“{title or name}” está na sua biblioteca do HD local.",
+            "cast": [],
+            "director": "Biblioteca pessoal",
+            "poster": poster,
+            "backdrop": backdrop,
+            "video": _media_url(root_key, rel.replace(os.sep, "/")),
+            "transcodeUrl": _media_url(root_key, rel.replace(os.sep, "/"), transcode=True),
+            "playable": ext in BROWSER_VIDEO_EXTS,
+            "subtitles": subs,
+            "new": False,
+        }
+        items.append(item)
     counts = {}
     for item in items:
         counts[item["title"]] = counts.get(item["title"], 0) + 1
@@ -555,7 +1117,7 @@ def _scan_movies(root_key: str, root: str) -> tuple[list[dict], dict]:
     return items, art
 
 
-def _scan_series(root_key: str, root: str) -> tuple[list[dict], dict]:
+def _scan_series(root_key: str, root: str, full: bool = False) -> tuple[list[dict], dict]:
     items = []
     try:
         top_entries = sorted((entry for entry in os.scandir(root) if entry.is_dir() and entry.name.lower() not in SKIP_DIRS), key=lambda entry: entry.name.lower())
@@ -572,33 +1134,49 @@ def _scan_series(root_key: str, root: str) -> tuple[list[dict], dict]:
         groups.append((entry.path, entry.name))
     for series_dir, raw_title in groups:
         videos = []
-        sub_files: list[str] = []
         images = []
+        subtitles: dict[str, list[str]] = {}
         for current, files in _walk_files(series_dir):
+            rel_dir = os.path.relpath(current, root)
+            rel_dir = "" if rel_dir == "." else rel_dir
+            owner, entries = _collect_subtitles(current, files, rel_dir)
+            if entries:
+                subtitles.setdefault(owner, []).extend(entries)
+            video_names = [name for name in files if os.path.splitext(name)[1].lower() in VIDEO_EXTS]
+            if video_names:
+                signatures = _directory_signatures(current, video_names, full=full)
+                for name in video_names:
+                    signature = signatures.get(name) or ""
+                    size = int(signature.split(":")[0]) if signature else 0
+                    if size >= 200 * 1024:
+                        videos.append(os.path.join(current, name))
             for name in files:
-                ext = os.path.splitext(name)[1].lower()
-                full = os.path.join(current, name)
-                if ext in VIDEO_EXTS:
-                    try:
-                        if os.path.getsize(full) >= 200 * 1024:
-                            videos.append(full)
-                    except OSError:
-                        pass
-                elif ext in SUB_EXTS:
-                    sub_files.append(full)
-                elif ext in IMAGE_EXTS:
-                    images.append(full)
+                if os.path.splitext(name)[1].lower() in IMAGE_EXTS:
+                    images.append(os.path.join(current, name))
         if not videos:
             continue
         title, year = _split_year(raw_title)
         title = title or _display(raw_title) or "Série local"
         poster = placeholder_url(title, "poster")
         backdrop = placeholder_url(title, "backdrop")
-        if images:
-            preferred = next((path for path in images if os.path.splitext(os.path.basename(path))[0].lower() in ("poster", "folder", "cover", "fanart", "backdrop")), images[0])
-            rel_art = os.path.relpath(preferred, root)
+
+        def _named(names: tuple[str, ...]) -> str | None:
+            for path in images:
+                if os.path.splitext(os.path.basename(path))[0].lower() in names:
+                    return path
+            return None
+
+        poster_file = _named(POSTER_NAMES)
+        backdrop_file = _named(BACKDROP_NAMES)
+        if not poster_file and images:
+            poster_file = images[0]
+        if poster_file:
+            rel_art = os.path.relpath(poster_file, root)
             poster = _art_url(root_key, rel_art.replace(os.sep, "/"))
             backdrop = poster
+        if backdrop_file:
+            rel_backdrop = os.path.relpath(backdrop_file, root)
+            backdrop = _art_url(root_key, rel_backdrop.replace(os.sep, "/"))
         seasons: dict[int, list[dict]] = {}
         for full in videos:
             rel = os.path.relpath(full, root)
@@ -616,8 +1194,7 @@ def _scan_series(root_key: str, root: str) -> tuple[list[dict], dict]:
             if episode is None:
                 episode = len(seasons.get(season, [])) + 1
             dir_rel = os.path.dirname(rel)
-            folder_subs = [os.path.basename(path) for path in sub_files if os.path.dirname(os.path.relpath(path, root)) == dir_rel]
-            subs = _find_subtitles(rel, root_key, {dir_rel: folder_subs})
+            subs = _find_subtitles(rel, root_key, subtitles.get(dir_rel, []))
             ext = os.path.splitext(full)[1].lower()
             seasons.setdefault(season, []).append({
                 "number": episode,
@@ -730,25 +1307,25 @@ def _music_roots(root: str) -> list[tuple[str, str]]:
     return roots
 
 
-def _scan_music(root_key: str, root: str) -> list[dict]:
+def _scan_music(root_key: str, root: str, full: bool = False) -> list[dict]:
     albums = []
     for current, files in _walk_files(root):
         audio = [name for name in files if os.path.splitext(name)[1].lower() in AUDIO_EXTS]
         if not audio:
             continue
+        signatures = _directory_signatures(current, audio, full=full)
         tracks = []
+        sources = []
         for name in audio:
-            full = os.path.join(current, name)
-            try:
-                stat = os.stat(full)
-            except OSError:
+            full_path = os.path.join(current, name)
+            signature = signatures.get(name) or ""
+            size = int(signature.split(":")[0]) if signature else 0
+            if not signature or size < 20 * 1024:
                 continue
-            if stat.st_size < 20 * 1024:
-                continue
-            tags = _read_tags_cached(full, f"{stat.st_size}:{int(stat.st_mtime)}")
+            tags = _read_tags_cached(full_path, signature)
             title = tags.get("title") or _display(os.path.splitext(name)[0])
             title = re.sub(r"^\s*0*\d{1,3}\s*[-._)]\s*", "", title) or title
-            rel = os.path.relpath(full, root)
+            rel = os.path.relpath(full_path, root)
             number = _track_number(name)
             if number is None and tags.get("track"):
                 match = re.match(r"0*(\d{1,3})", tags["track"])
@@ -762,6 +1339,7 @@ def _scan_music(root_key: str, root: str) -> list[dict]:
                 "fileRel": rel.replace(os.sep, "/"),
                 "playable": os.path.splitext(name)[1].lower() in BROWSER_AUDIO_EXTS,
             })
+            sources.append((full_path, signature))
         if not tracks:
             continue
         album_title, artist, year = _album_meta(current)
@@ -776,6 +1354,12 @@ def _scan_music(root_key: str, root: str) -> list[dict]:
         if cover_file:
             rel_cover = os.path.relpath(cover_file, root)
             cover = _art_url(root_key, rel_cover.replace(os.sep, "/"))
+        else:
+            for full, signature in sources[:3]:
+                cached = _art_cache_file(full, signature)
+                if cached:
+                    cover = f"/api/local/art-cache?name={cached}"
+                    break
         albums.append({
             "id": f"local-album-{_hash(root_key + ':' + os.path.relpath(current, root))}",
             "title": album_title,
@@ -788,7 +1372,7 @@ def _scan_music(root_key: str, root: str) -> list[dict]:
     return albums
 
 
-def scan(root: str | None = None) -> dict:
+def scan(root: str | None = None, full: bool = False) -> dict:
     with _scan_lock:
         _scan_state["scanning"] = True
         _scan_state["startedAt"] = time.time()
@@ -796,8 +1380,10 @@ def scan(root: str | None = None) -> dict:
         try:
             root = detect_root(root)
             load_tag_cache()
-            result = _scan(root)
+            load_dir_signatures()
+            result = _scan(root, full=full)
             save_tag_cache()
+            save_dir_signatures()
             result["scanning"] = False
             return result
         except Exception as error:  # noqa: BLE001 - reportar ao cliente
@@ -807,7 +1393,7 @@ def scan(root: str | None = None) -> dict:
             _scan_state["scanning"] = False
 
 
-def _scan(root: str) -> dict:
+def _scan(root: str, full: bool = False) -> dict:
     roots = {"movies": {}, "series": {}, "music": {}}
     items = []
     errors = []
@@ -835,13 +1421,13 @@ def _scan(root: str) -> dict:
             roots["movies"]["m0"] = root
     for root_key, path in roots["movies"].items():
         try:
-            found, _art = _scan_movies(root_key, path)
+            found, _art = _scan_movies(root_key, path, full=full)
             items.extend(found)
         except Exception as error:  # noqa: BLE001
             errors.append(f"filmes: {error}")
     for root_key, path in roots["series"].items():
         try:
-            found, _art = _scan_series(root_key, path)
+            found, _art = _scan_series(root_key, path, full=full)
             items.extend(found)
         except Exception as error:  # noqa: BLE001
             errors.append(f"séries: {error}")
@@ -850,7 +1436,7 @@ def _scan(root: str) -> dict:
         root_key = f"u{index}"
         roots["music"][root_key] = path
         try:
-            albums.extend(_scan_music(root_key, path))
+            albums.extend(_scan_music(root_key, path, full=full))
         except Exception as error:  # noqa: BLE001
             errors.append(f"música ({os.path.basename(path)}): {error}")
     movies = sum(1 for item in items if item.get("type") == "filme")
