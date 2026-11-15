@@ -725,16 +725,25 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             boost = 1.0
         if boost > 1.0:
-            self.stream_amplified(path, boost)
+            start = 0.0
+            try:
+                start = max(0.0, float((query.get("start") or ["0"])[0]))
+            except ValueError:
+                start = 0.0
+            self.stream_amplified(path, boost, start)
             return
         self.stream_file(path)
 
-    def stream_amplified(self, path: str, boost: float) -> None:
+    def stream_amplified(self, path: str, boost: float, start: float = 0.0) -> None:
         if not ffmpeg_available():
             self.stream_file(path)
             return
         args = [
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+        ]
+        if start > 0:
+            args += ["-ss", f"{start:.3f}"]
+        args += [
             "-i", path,
             "-map", "0:v:0?", "-map", "0:a:0?",
             "-c:v", "copy",
@@ -806,16 +815,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             root_key = str((query.get("root") or [""])[0]).strip()
             rel = str((query.get("path") or [""])[0]).strip()
-            resolved = resolve_local_rel(current_library(), root_key, rel)
-            if resolved:
-                try:
-                    exact_entries = opensubtitles_get(f"/search/moviehash/{movie_hash(resolved[0])}")
-                except RuntimeError:
-                    exact_entries = []
-                for entry in exact_entries or []:
-                    if str(entry.get("SubLanguageID") or "") not in languages.split(","):
-                        continue
-                    results.append(normalize_subtitle(entry, exact=True))
             entries = []
             for code in languages.split(","):
                 try:
@@ -1205,7 +1204,7 @@ def main() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     _config = load_config()
     if args.root:
-        _config = {"root": lib.detect_root(args.root)}
+        _config = {**_config, "root": lib.detect_root(args.root)}
         save_config(_config)
         args.scan = True
     if not CONFIG_FILE.exists():

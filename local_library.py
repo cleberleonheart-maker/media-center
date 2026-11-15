@@ -234,11 +234,56 @@ def _safe_inside(base: str, rel: str) -> str | None:
         return None
 
 
+_TAG_CACHE: dict[str, dict] = {}
+_TAG_CACHE_FILE = Path(__file__).resolve().parent / ".data" / "tag-cache.json"
+
+
+def _file_signature(path: str) -> str:
+    try:
+        stat = os.stat(path)
+        return f"{stat.st_size}:{int(stat.st_mtime)}"
+    except OSError:
+        return ""
+
+
+def load_tag_cache() -> None:
+    try:
+        with open(_TAG_CACHE_FILE, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return
+    if isinstance(data, dict):
+        _TAG_CACHE.update({key: value for key, value in data.items() if isinstance(value, dict)})
+
+
+def save_tag_cache() -> None:
+    try:
+        _TAG_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _TAG_CACHE_FILE.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(_TAG_CACHE, handle, ensure_ascii=False)
+        os.replace(tmp, _TAG_CACHE_FILE)
+    except OSError:
+        pass
+
+
+def _read_tags_cached(path: str, signature: str = "") -> dict:
+    signature = signature or _file_signature(path)
+    if not signature:
+        return {}
+    cached = _TAG_CACHE.get(path)
+    if cached and cached.get("sig") == signature:
+        return cached.get("tags") or {}
+    tags = _read_id3(path)
+    _TAG_CACHE[path] = {"sig": signature, "tags": tags}
+    return tags
+
+
 def _read_id3(path: str) -> dict:
     tags = {}
     try:
         with open(path, "rb") as handle:
-            data = handle.read(96 * 1024)
+            data = handle.read(32 * 1024)
         if data[:3] == b"ID3" and len(data) > 10:
             version = data[3]
             body = data[10:]
@@ -695,11 +740,12 @@ def _scan_music(root_key: str, root: str) -> list[dict]:
         for name in audio:
             full = os.path.join(current, name)
             try:
-                if os.path.getsize(full) < 20 * 1024:
-                    continue
+                stat = os.stat(full)
             except OSError:
                 continue
-            tags = _read_id3(full)
+            if stat.st_size < 20 * 1024:
+                continue
+            tags = _read_tags_cached(full, f"{stat.st_size}:{int(stat.st_mtime)}")
             title = tags.get("title") or _display(os.path.splitext(name)[0])
             title = re.sub(r"^\s*0*\d{1,3}\s*[-._)]\s*", "", title) or title
             rel = os.path.relpath(full, root)
@@ -749,7 +795,9 @@ def scan(root: str | None = None) -> dict:
         _scan_state["error"] = None
         try:
             root = detect_root(root)
+            load_tag_cache()
             result = _scan(root)
+            save_tag_cache()
             result["scanning"] = False
             return result
         except Exception as error:  # noqa: BLE001 - reportar ao cliente

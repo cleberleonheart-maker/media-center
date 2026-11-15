@@ -1890,10 +1890,10 @@ function applyAudioBoost(factor) {
   const time = Number.isFinite(videoPlayer.currentTime) ? videoPlayer.currentTime : 0;
   const wasPlaying = !videoPlayer.paused;
   const separator = mediaUrl.includes('?') ? '&' : '?';
-  const base = mediaUrl.split('&boost=')[0];
+  const base = mediaUrl.split('&boost=')[0].split('&start=')[0];
   state.audioBoost = factor;
   storage.set('nexa-audio-boost', factor);
-  videoPlayer.src = factor > 1 ? `${base}${separator}boost=${factor}` : base;
+  videoPlayer.src = factor > 1 ? `${base}${separator}boost=${factor}&start=${Math.floor(time)}` : base;
   videoPlayer.load();
   const resume = () => {
     if (time > 1) videoPlayer.currentTime = time;
@@ -2709,6 +2709,22 @@ videoPlayer.addEventListener('error', () => {
   videoPlayer.load();
   if (state.autoplay) videoPlayer.play().catch(() => {});
   showToast('Tentando um link alternativo do Drive...', 'success');
+});
+let boostSeeking = false;
+videoPlayer.addEventListener('seeking', () => {
+  if (boostSeeking || state.audioBoost <= 1) return;
+  const active = state.activeVideo;
+  const mediaUrl = localMediaUrl(active?.item, active?.episodeFile);
+  if (!mediaUrl) return;
+  boostSeeking = true;
+  const base = mediaUrl.split('&boost=')[0].split('&start=')[0];
+  videoPlayer.src = `${base}&boost=${state.audioBoost}&start=${Math.floor(videoPlayer.currentTime || 0)}`;
+  videoPlayer.load();
+  const release = () => {
+    boostSeeking = false;
+    videoPlayer.removeEventListener('seeked', release);
+  };
+  videoPlayer.addEventListener('seeked', release);
 });
 videoPlayer.addEventListener('play', () => setPlayerPlaying(true));
 videoPlayer.addEventListener('pause', () => setPlayerPlaying(false));
