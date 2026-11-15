@@ -13,7 +13,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e50914'/%3E%3Cpath d='M20 17h8v30h-8zm16 0h8v30h-8z' fill='white'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -354,16 +354,17 @@
           <label class="settings-field" for="subtitle-api-key">Chave da API
             <input id="subtitle-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Api-Key do OpenSubtitles">
           </label>
-          <label class="settings-field" for="subtitle-user">Usuário (opcional)
-            <input id="subtitle-user" type="text" autocomplete="off" spellcheck="false" placeholder="seu usuário">
+          <label class="settings-field" for="subtitle-user">Usuário
+            <input id="subtitle-user" type="text" autocomplete="off" spellcheck="false" placeholder="seu usuário do OpenSubtitles">
           </label>
-          <label class="settings-field" for="subtitle-password">Senha (opcional)
+          <label class="settings-field" for="subtitle-password">Senha
             <input id="subtitle-password" type="password" autocomplete="off" spellcheck="false">
           </label>
           <div class="drive-actions">
             <button class="button button-secondary" id="subtitle-settings-save" type="button">Salvar chaves</button>
           </div>
           <p class="settings-note" id="subtitle-settings-status" role="status">Busca online desativada até informar a chave da API.</p>
+          <p class="settings-note">Crie a chave em <code>opensubtitles.com</code> → <em>Configurações</em> → <em>API</em> (cadastre um aplicativo consumer). Com usuário e senha o NEXA usa a API nova (v1); sem eles ele tenta a API antiga.</p>
           <p class="eyebrow">Metadados dos filmes</p>
           <p class="settings-intro">Use a API do OMDb para trazer pôsteres, ano, sinopse e elenco reais dos filmes do HD (inclusive de legendas online).</p>
           <label class="settings-field" for="omdb-api-key">Chave da API
@@ -474,6 +475,6 @@
 
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

@@ -2619,7 +2619,7 @@ document.getElementById('subtitle-search-run').addEventListener('click', async (
     }
     subtitleResults.innerHTML = results.map((result) => `
       <li>
-        <button type="button" data-subtitle-download="${result.id}" data-lang="${result.lang || 'pt'}">
+        <button type="button" data-subtitle-download="${result.id}" data-lang="${result.lang || 'pt'}" data-link="${result.link || ''}" data-api="${result.api || ''}">
           <strong>${escapeHtml(result.name || 'Legenda')}</strong>
           <small>${escapeHtml(result.fileName || '')}</small>
           <span class="subtitle-result-meta">${escapeHtml(result.lang || 'pt')}${result.hearingImpaired ? ' • SDH' : ''}${result.downloads ? ` • ${result.downloads} downloads` : ''}</span>
@@ -2646,6 +2646,7 @@ subtitleResults.addEventListener('click', async (event) => {
       body: JSON.stringify({
         subtitleId: button.dataset.subtitleDownload,
         link: button.dataset.link || '',
+        api: button.dataset.api || '',
         lang: button.dataset.lang || 'pt',
         ...(target ? { root: target.rootKey, path: target.path } : {})
       }),
@@ -2997,7 +2998,9 @@ document.getElementById('subtitle-settings-save').addEventListener('click', asyn
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     status.textContent = data.hasKey
-      ? 'Chave salva no servidor local. A busca online está ativa.'
+      ? (data.hasUser
+        ? 'Chave e login salvos no servidor local. A busca online usa a API nova (v1) do OpenSubtitles.'
+        : 'Chave salva no servidor local. A busca online usa a API antiga; informe usuário e senha para usar a API nova.')
       : 'Chave removida. A busca online precisa da chave da API.';
     showToast('Credenciais de legendas salvas.', 'success');
   } catch (error) {

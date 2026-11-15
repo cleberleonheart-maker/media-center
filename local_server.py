@@ -46,6 +46,25 @@ _scan_pending = False
 _catalog = lib.read_cached(str(CACHE_FILE))
 _config = {"root": lib.detect_root()}
 SUBTITLE_API = "https://api.opensubtitles.com/api/v1"
+SUBTITLE_LEGACY_API = "https://rest.opensubtitles.org"
+SUBTITLE_USER_AGENT = "NexaLocal v1.0 (https://github.com/cleberleonheart-maker/media-center)"
+SUBTITLE_V1_LANGUAGES = {
+    "pob": ("pt-br", "pob"),
+    "por": ("pt", "por"),
+    "pt": ("pt", "por"),
+    "eng": ("en", "eng"),
+    "en": ("en", "eng"),
+    "spa": ("es", "spa"),
+    "es": ("es", "spa"),
+    "fre": ("fr", "fre"),
+    "fr": ("fr", "fre"),
+    "ger": ("de", "ger"),
+    "de": ("de", "ger"),
+    "ita": ("it", "ita"),
+    "it": ("it", "ita"),
+    "jpn": ("ja", "jpn"),
+    "ja": ("ja", "jpn"),
+}
 _subtitle_token = {"token": "", "at": 0.0}
 
 
@@ -187,7 +206,7 @@ def opensubtitles_headers() -> dict:
 def opensubtitles_get(path: str, params: dict | None = None) -> object:
     if not str(_config.get("subtitleApiKey") or "").strip():
         raise RuntimeError("informe a chave da API do OpenSubtitles nas Preferências")
-    url = f"https://rest.opensubtitles.org{path}"
+    url = f"{SUBTITLE_LEGACY_API}{path}"
     if params:
         url = f"{url}?{quote_params(params)}"
     request = urllib.request.Request(url, headers=opensubtitles_headers())
@@ -200,6 +219,165 @@ def opensubtitles_get(path: str, params: dict | None = None) -> object:
         raise RuntimeError(f"OpenSubtitles respondeu {error.code}: {detail or error.reason}") from error
     except (urllib.error.URLError, TimeoutError) as error:
         raise RuntimeError(f"OpenSubtitles indisponível: {error}") from error
+
+
+def subtitle_credentials() -> tuple[str, str, str]:
+    key = str(_config.get("subtitleApiKey") or "").strip()
+    user = str(_config.get("subtitleUser") or "").strip()
+    password = str(_config.get("subtitlePassword") or "").strip()
+    return key, user, password
+
+
+def use_legacy_subtitles() -> bool:
+    """Chave antiga (32 hex) usa rest.opensubtitles.org; com login usamos a API v1."""
+    key, user, password = subtitle_credentials()
+    if user and password:
+        return False
+    return len(key) == 32
+
+
+def opensubtitles_v1_token() -> str:
+    key, user, password = subtitle_credentials()
+    if not key:
+        raise RuntimeError("informe a chave da API do OpenSubtitles nas Preferências")
+    if not user or not password:
+        raise RuntimeError("informe usuário e senha do OpenSubtitles nas Preferências")
+    token = str(_subtitle_token.get("token") or "")
+    if token and time.time() - float(_subtitle_token.get("at") or 0) < 3600:
+        return token
+    request = urllib.request.Request(
+        f"{SUBTITLE_API}/login",
+        data=json.dumps({"username": user, "password": password}).encode("utf-8"),
+        headers={
+            "Api-Key": key,
+            "Content-Type": "application/json",
+            "User-Agent": "TemporaryUserAgent",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=25) as response:
+            data = json.loads(response.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:200]
+        raise RuntimeError(f"OpenSubtitles recusou o login ({error.code}): {detail or error.reason}") from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(f"OpenSubtitles indisponível: {error}") from error
+    token = str(data.get("token") or "")
+    if not token:
+        raise RuntimeError("OpenSubtitles não devolveu token de acesso")
+    _subtitle_token["token"] = token
+    _subtitle_token["at"] = time.time()
+    return token
+
+
+def opensubtitles_v1_request(path: str, params: dict | None = None, body: dict | None = None) -> object:
+    key, _user, _password = subtitle_credentials()
+    token = opensubtitles_v1_token()
+    url = f"{SUBTITLE_API}{path}"
+    if params:
+        url = f"{url}?{quote_params(params)}"
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = {
+        "Api-Key": key,
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": SUBTITLE_USER_AGENT,
+    }
+    request = urllib.request.Request(
+        url, data=data, headers=headers, method="POST" if data is not None else "GET"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = response.read().decode("utf-8", "replace")
+        return json.loads(payload) if payload else {}
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:200]
+        raise RuntimeError(f"OpenSubtitles respondeu {error.code}: {detail or error.reason}") from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(f"OpenSubtitles indisponível: {error}") from error
+
+
+def opensubtitles_v1_fetch(link: str) -> bytes:
+    key, _user, _password = subtitle_credentials()
+    token = opensubtitles_v1_token()
+    request = urllib.request.Request(link, headers={
+        "Api-Key": key,
+        "Authorization": f"Bearer {token}",
+        "User-Agent": SUBTITLE_USER_AGENT,
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=40) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:200]
+        raise RuntimeError(f"OpenSubtitles respondeu {error.code}: {detail or error.reason}") from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(f"não foi possível baixar a legenda: {error}") from error
+
+
+def normalize_subtitle_v1(entry: dict) -> dict:
+    attributes = entry.get("attributes") or {}
+    files = attributes.get("files") or []
+    file_id = ""
+    file_name = ""
+    for item in files:
+        file_id = str(item.get("subtitle_file_id") or "")
+        file_name = str(item.get("file_name") or "")
+        if file_id:
+            break
+    return {
+        "id": file_id or str(entry.get("id") or ""),
+        "name": attributes.get("release") or attributes.get("title") or "",
+        "fileName": file_name,
+        "lang": attributes.get("language_code") or attributes.get("language") or "",
+        "langName": attributes.get("language") or "",
+        "year": attributes.get("year") or "",
+        "downloads": int(attributes.get("download_count") or 0),
+        "rating": attributes.get("rating") or 0,
+        "hearingImpaired": bool(attributes.get("hearing_impaired")),
+        "provider": "",
+        "imdb": str(attributes.get("imdb_id") or ""),
+        "encoding": "",
+        "link": "",
+        "api": "v1",
+        "exact": False,
+    }
+
+
+def opensubtitles_v1_search(title: str, languages: list[str], year: str = "") -> list[dict]:
+    entries = []
+    for code in languages:
+        candidates = SUBTITLE_V1_LANGUAGES.get(code, (code,))
+        data = None
+        error = None
+        for candidate in candidates:
+            params = {"query": title, "language_codes": candidate}
+            if year.isdigit():
+                params["year"] = year
+            try:
+                data = opensubtitles_v1_request("/subtitles", params=params)
+                error = None
+                break
+            except RuntimeError as exc:
+                error = exc
+        if data is None:
+            if error is not None:
+                raise error
+            continue
+        for entry in (data or {}).get("data") or []:
+            normalized = normalize_subtitle_v1(entry)
+            if normalized["id"]:
+                entries.append(normalized)
+    return entries
+
+
+def opensubtitles_v1_download_link(subtitle_id: str) -> str:
+    data = opensubtitles_v1_request("/download", body={"subtitle_file_id": subtitle_id})
+    link = str((data or {}).get("link") or "")
+    if not link:
+        raise RuntimeError("OpenSubtitles não devolveu link de download")
+    return link
 
 
 def quote_params(params: dict) -> str:
@@ -241,6 +419,7 @@ def normalize_subtitle(entry: dict, exact: bool = False) -> dict:
         "imdb": entry.get("IDMovieImdb") or "",
         "encoding": entry.get("SubEncoding") or "",
         "link": entry.get("SubDownloadLink") or "",
+        "api": "legacy",
         "exact": bool(exact),
     }
 
@@ -816,38 +995,49 @@ class Handler(BaseHTTPRequestHandler):
             params["year"] = year
         results = []
         try:
-            root_key = str((query.get("root") or [""])[0]).strip()
-            rel = str((query.get("path") or [""])[0]).strip()
-            entries = []
-            for code in languages.split(","):
-                try:
-                    found = opensubtitles_get("/search/query", {**params, "sublanguageid": code})
-                except RuntimeError:
-                    found = []
-                entries.extend(found or [])
+            if use_legacy_subtitles():
+                entries = []
+                for code in languages.split(","):
+                    try:
+                        found = opensubtitles_get("/search/query", {**params, "sublanguageid": code})
+                    except RuntimeError:
+                        found = []
+                    entries.extend(found or [])
+                for entry in entries or []:
+                    normalized = normalize_subtitle(entry)
+                    if normalized["id"]:
+                        results.append(normalized)
+            else:
+                entries = opensubtitles_v1_search(title, languages.split(","), year)
+                results.extend(entries)
         except RuntimeError as error:
             self.send_json(HTTPStatus.BAD_GATEWAY, {"error": str(error)})
             return
-        for entry in entries or []:
-            normalized = normalize_subtitle(entry)
-            if normalized["id"] and not any(item["id"] == normalized["id"] for item in results):
-                results.append(normalized)
+        unique = []
+        seen = set()
+        for item in results:
+            if not item["id"] or item["id"] in seen:
+                continue
+            seen.add(item["id"])
+            unique.append(item)
+
         def rank(item: dict) -> tuple:
-            priority = {"pob": 0, "por": 1, "pt": 1, "eng": 2}.get(str(item.get("lang") or "").lower(), 3)
+            priority = {"pob": 0, "por": 1, "pt": 1, "pt-br": 0, "eng": 2, "en": 2}.get(str(item.get("lang") or "").lower(), 3)
             year_match = 0 if year and str(item.get("year") or "") == year else 1
             return (not item["exact"], priority, year_match, -item["downloads"])
 
-        results.sort(key=rank)
-        self.send_json(HTTPStatus.OK, {"results": results[:80], "query": title})
+        unique.sort(key=rank)
+        self.send_json(HTTPStatus.OK, {"results": unique[:80], "query": title})
 
     def api_subtitle_download(self, body: dict) -> None:
         link = str(body.get("link") or "").strip()
+        subtitle_id = str(body.get("subtitleId") or "").strip()
+        source = str(body.get("api") or "").strip()
         root_key = str(body.get("root") or "").strip()
         rel = str(body.get("path") or "").strip()
         lang = str(body.get("lang") or "pob")
-        if not link.startswith("https://dl.opensubtitles.org/"):
-            self.send_json(HTTPStatus.BAD_REQUEST, {"error": "link de legenda inválido"})
-            return
+        if source != "v1" and not link and subtitle_id and use_legacy_subtitles():
+            source = "legacy"
         library = current_library()
         resolved = resolve_local_rel(library, root_key, rel) if root_key and rel else None
         if root_key and rel and (not resolved or not os.path.isfile(resolved[0])):
@@ -855,10 +1045,23 @@ class Handler(BaseHTTPRequestHandler):
             return
         media_path, base = resolved if resolved else (None, None)
         try:
-            request = urllib.request.Request(link, headers=opensubtitles_headers())
-            with urllib.request.urlopen(request, timeout=40) as response:
-                raw = response.read()
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as error:
+            if source == "v1" or (not link and subtitle_id):
+                if not subtitle_id:
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"error": "informe o id da legenda"})
+                    return
+                link = opensubtitles_v1_download_link(subtitle_id)
+                raw = opensubtitles_v1_fetch(link)
+            else:
+                if not link.startswith("https://dl.opensubtitles.org/"):
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"error": "link de legenda inválido"})
+                    return
+                request = urllib.request.Request(link, headers=opensubtitles_headers())
+                with urllib.request.urlopen(request, timeout=40) as response:
+                    raw = response.read()
+        except RuntimeError as error:
+            self.send_json(HTTPStatus.BAD_GATEWAY, {"error": str(error)})
+            return
+        except (urllib.error.URLError, TimeoutError) as error:
             self.send_json(HTTPStatus.BAD_GATEWAY, {"error": f"não foi possível baixar a legenda: {error}"})
             return
         content = decode_subtitle_bytes(raw)
