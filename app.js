@@ -1284,8 +1284,8 @@ async function loadLocalLibrary(options = {}) {
   } catch (error) {
     const httpsPage = window.location.protocol === 'https:';
     const message = httpsPage
-      ? 'Páginas https bloqueiam o servidor local. Abra o NEXA em http://100.115.92.199:8090.'
-      : 'Servidor local indisponível. Rode python3 local_server.py e recarregue.';
+      ? `Páginas https bloqueiam o servidor local. Abra o NEXA em ${localServerBase()}.`
+      : `Servidor local indisponível em ${localServerBase()}. Rode python3 local_server.py e recarregue.`;
     if (!options.silent) {
       setLocalStatus(message, 'error');
       showToast(message, 'error');
@@ -1464,7 +1464,7 @@ function posterCard(item, options = {}) {
   const inner = `
     ${poster}
     <h3 class="poster-title">${escapeHtml(item.title)}</h3>
-    <div class="poster-meta"><span class="match-score">${item.match}%</span><span>•</span><span>${item.year}</span><span>•</span><span>${typeLabel[item.type]}</span></div>`;
+    <div class="poster-meta"><span class="match-score">${escapeHtml(item.match)}%</span><span>•</span><span>${escapeHtml(item.year)}</span><span>•</span><span>${escapeHtml(typeLabel[item.type])}</span></div>`;
   if (isTop) {
     return `<article class="media-card rank-wrap" data-id="${item.id}"><span class="rank-number">${options.rank}</span><div class="poster-button">${inner}</div></article>`;
   }
@@ -1492,11 +1492,11 @@ function homeHero(item) {
         <span class="hero-badge">${item.original ? 'NEXA Original' : 'Em destaque'}</span>
         <h1 id="hero-title">${escapeHtml(item.title)}</h1>
         <div class="hero-meta">
-          <span class="match-score">${item.match}% de escolha</span>
-          <span class="meta-divider"></span><span>${item.year}</span>
-          <span class="meta-divider"></span><span>${item.maturity}</span>
-          <span class="meta-divider"></span><span>${item.duration}</span>
-          <span class="meta-divider"></span><span>${item.genres.join(' • ')}</span>
+          <span class="match-score">${escapeHtml(item.match)}% de escolha</span>
+          <span class="meta-divider"></span><span>${escapeHtml(item.year)}</span>
+          <span class="meta-divider"></span><span>${escapeHtml(item.maturity)}</span>
+          <span class="meta-divider"></span><span>${escapeHtml(item.duration)}</span>
+          <span class="meta-divider"></span><span>${escapeHtml(item.genres.join(' • '))}</span>
         </div>
         <p class="hero-description">${escapeHtml(item.description)}</p>
         <div class="hero-actions">
@@ -2636,7 +2636,8 @@ document.getElementById('subtitle-search-run').addEventListener('click', async (
     const message = error.name === 'AbortError'
       ? 'Tempo esgotado ao falar com o servidor local.'
       : (error.message || 'Falha na busca.');
-    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}<br>Abra o NEXA em <code>http://100.115.92.199:8090</code> e rode <code>python3 local_server.py</code>.</li>`;
+    const base = escapeHtml(localServerBase());
+    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}<br>Abra o NEXA em <code>${base}</code> e rode <code>python3 local_server.py</code>.</li>`;
     showToast(message, 'error');
   }
 });
@@ -2685,7 +2686,6 @@ subtitleResults.addEventListener('click', async (event) => {
     showToast(data.saved ? `Legenda baixada e salva no HD: ${data.name}` : 'Legenda baixada e aplicada.', 'success');
   } catch (error) {
     const message = error.name === 'AbortError' ? 'Tempo esgotado ao baixar a legenda.' : (error.message || 'Não foi possível baixar a legenda.');
-    console.error('legenda', error);
     subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}</li>`;
     showToast(message, 'error');
     button.disabled = false;
