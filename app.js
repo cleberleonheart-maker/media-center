@@ -446,6 +446,7 @@ const state = {
   localConfig: null,
   musicAlbums: [],
   audioBoost: Number(storage.get('nexa-audio-boost', 1)) || 1,
+  playbackRate: Number(storage.get('nexa-playback-rate', 1)) || 1,
   activeAlbum: null,
   activeTrackIndex: -1,
   hideControlsTimer: null
@@ -506,6 +507,10 @@ const subtitleSearchOpen = document.getElementById('subtitle-search-open');
 const subtitleSaveHd = document.getElementById('subtitle-save-hd');
 const playerBoostButton = document.getElementById('player-boost');
 const playerBoostLabel = document.getElementById('player-boost-label');
+const playerSpeedButton = document.getElementById('player-speed');
+const playerSpeedLabel = document.getElementById('player-speed-label');
+const playerPipButton = document.getElementById('player-pip');
+const shortcutsDialog = document.getElementById('shortcuts-dialog');
 const searchInput = document.getElementById('search-input');
 const searchBox = document.querySelector('.search-box');
 const toastRegion = document.getElementById('toast-region');
@@ -1448,7 +1453,8 @@ function posterCard(item, options = {}) {
   const progress = state.progress[item.id];
   const isTop = options.top;
   const badge = item.original ? '<span class="card-badge original">Original</span>' : item.new ? '<span class="card-badge">Novo</span>' : '';
-  const progressBar = progress ? `<span class="card-progress" role="progressbar" aria-label="Progresso de ${escapeHtml(item.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}"><span aria-hidden="true" style="width:${progress.percent}%"></span></span>` : '';
+  const showProgress = progress && progress.percent > 0 && progress.percent < 100;
+  const progressBar = showProgress ? `<span class="card-progress" role="progressbar" aria-label="Progresso de ${escapeHtml(item.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}"><span aria-hidden="true" style="width:${progress.percent}%"></span></span>` : '';
   const poster = `
     <div class="poster-wrap">
       <img src="${escapeHtml(item.poster)}" alt="Pôster de ${escapeHtml(item.title)}" loading="lazy">
@@ -1509,7 +1515,7 @@ function homeHero(item) {
 
 function renderHome() {
   const visible = currentCatalog();
-  const continueItems = visible.filter((item) => state.progress[item.id]).sort((a, b) => state.progress[b.id].percent - state.progress[a.id].percent);
+  const continueItems = visible.filter((item) => isItemInProgress(item)).sort((a, b) => (state.progress[b.id]?.percent || 0) - (state.progress[a.id]?.percent || 0));
   const trending = visible.filter((item) => item.trending);
   const top = visible.filter((item) => item.top).slice(0, 10);
   const originals = visible.filter((item) => item.original);
@@ -1747,8 +1753,9 @@ function openDetails(id) {
   likeButton.setAttribute('aria-pressed', String(liked));
   likeButton.dataset.id = item.id;
   const playButton = document.getElementById('detail-play');
-  playButton.innerHTML = `${icon('play')}<span>${state.progress[item.id] ? 'Continuar assistindo' : 'Assistir'}</span>`;
+  playButton.innerHTML = `${icon('play')}<span>${isItemSeen(item) ? 'Assistir novamente' : (isItemInProgress(item) ? 'Continuar assistindo' : 'Assistir')}</span>`;
   playButton.dataset.id = item.id;
+  updateSeenButton(item);
   document.getElementById('detail-share').dataset.id = item.id;
   const omdbButton = document.getElementById('detail-omdb');
   omdbButton.hidden = !(item.local && item.type === 'filme');
@@ -1878,7 +1885,8 @@ function openPlayer(id, episodeIndex = null, options = {}) {
   const activeVideo = state.activeVideo;
   videoPlayer.addEventListener('loadedmetadata', function resume() {
     if (state.activeVideo !== activeVideo) return;
-    if (saved?.seconds && saved.seconds < videoPlayer.duration - 10) videoPlayer.currentTime = saved.seconds;
+    videoPlayer.playbackRate = state.playbackRate;
+    if (saved?.seconds && saved.seconds < videoPlayer.duration - 10 && (saved.percent || 0) < 100) videoPlayer.currentTime = saved.seconds;
   }, { once: true });
   if (episodeFile?.playable === false) showToast('Este formato pode não tocar no navegador. Prefira MP4 ou WebM.', 'error');
   if (detailsDialog.open) detailsDialog.close();
@@ -1888,6 +1896,8 @@ function openPlayer(id, episodeIndex = null, options = {}) {
   }
   updatePlayerNextButton();
   updateBoostButton();
+  updateSpeedButton();
+  updatePipButton();
   const shouldAutoplay = options.autoplay ?? state.autoplay;
   if (shouldAutoplay) {
     const promise = videoPlayer.play();
@@ -2267,18 +2277,82 @@ function updatePlayerProgress() {
   }
 }
 
+function progressKeyPrefix(itemId) {
+  return `${itemId}::`;
+}
+
+function isItemSeen(item) {
+  const progress = state.progress[item?.id];
+  return Boolean(progress && progress.percent >= 100);
+}
+
+function isItemInProgress(item) {
+  const progress = state.progress[item?.id];
+  return Boolean(progress && progress.percent > 0 && progress.percent < 100);
+}
+
+function clearItemProgress(item) {
+  if (!item) return;
+  delete state.progress[item.id];
+  Object.keys(state.progress).forEach((key) => {
+    if (key.startsWith(progressKeyPrefix(item.id))) delete state.progress[key];
+  });
+}
+
+function markItemSeen(item) {
+  if (!item) return;
+  clearItemProgress(item);
+  state.progress[item.id] = { percent: 100, seconds: 0, updatedAt: Date.now() };
+}
+
+function updateSeenButton(item) {
+  const button = document.getElementById('detail-seen');
+  if (!button || !item) return;
+  const seen = isItemSeen(item);
+  button.innerHTML = `${icon(seen ? 'eye-off' : 'eye')}<span>${seen ? 'Marcar como não visto' : 'Marcar como visto'}</span>`;
+  button.setAttribute('aria-pressed', String(seen));
+  button.dataset.id = item.id;
+}
+
+function toggleSeen(id) {
+  const item = getItem(id);
+  if (!item) return;
+  if (isItemSeen(item)) {
+    clearItemProgress(item);
+    showToast(`${item.title} marcado como não visto`, 'success');
+  } else {
+    markItemSeen(item);
+    showToast(`${item.title} marcado como visto`, 'success');
+  }
+  persistActiveProfile();
+  updateSeenButton(item);
+  const playButton = document.getElementById('detail-play');
+  if (playButton && playButton.dataset.id === item.id) {
+    playButton.innerHTML = `${icon('play')}<span>${isItemSeen(item) ? 'Assistir novamente' : (state.progress[item.id] ? 'Continuar assistindo' : 'Assistir')}</span>`;
+  }
+  refreshCurrentView();
+}
+
 function saveProgress() {
   if (!state.activeVideo || !Number.isFinite(videoPlayer.duration) || videoPlayer.duration <= 0) return;
   const { item, seasonIndex, episodeIndex, progressKey } = state.activeVideo;
-  const percent = Math.min(99, Math.max(1, (videoPlayer.currentTime / videoPlayer.duration) * 100));
-  const entry = { percent: Math.round(percent), seconds: Math.round(videoPlayer.currentTime), updatedAt: Date.now() };
+  const rawPercent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+  const ended = videoPlayer.ended || rawPercent >= 99.5;
+  const percent = ended ? 100 : Math.min(99, Math.max(1, Math.round(rawPercent)));
+  const entry = { percent, seconds: Math.round(videoPlayer.currentTime), updatedAt: Date.now() };
   const hasSeries = episodeIndex !== null && (item.drive || item.local);
   if (hasSeries) {
     entry.season = seasonIndex;
     entry.episode = episodeIndex;
   }
   state.progress[progressKey || item.id] = entry;
-  if (hasSeries) state.progress[item.id] = entry;
+  if (hasSeries) {
+    if (percent >= 100) {
+      state.progress[item.id] = { percent: 99, seconds: 0, season: seasonIndex, episode: episodeIndex, updatedAt: Date.now() };
+    } else {
+      state.progress[item.id] = entry;
+    }
+  }
   persistActiveProfile();
 }
 
@@ -2311,6 +2385,19 @@ function toggleMute() {
 function toggleFullscreen() {
   if (!document.fullscreenElement) document.getElementById('player-shell').requestFullscreen?.();
   else document.exitFullscreen?.();
+}
+
+function openShortcutsDialog() {
+  if (!shortcutsDialog) return;
+  if (!shortcutsDialog.open) {
+    shortcutsDialog.showModal();
+    document.body.classList.add('modal-open');
+  }
+}
+
+function closeShortcutsDialog() {
+  if (!shortcutsDialog?.open) return;
+  shortcutsDialog.close();
 }
 
 function scheduleControlsHide() {
@@ -2409,6 +2496,7 @@ document.addEventListener('keydown', (event) => {
 
 document.getElementById('detail-play').addEventListener('click', (event) => openPlayer(event.currentTarget.dataset.id));
 document.getElementById('detail-list').addEventListener('click', (event) => toggleList(event.currentTarget.dataset.id));
+document.getElementById('detail-seen').addEventListener('click', (event) => toggleSeen(event.currentTarget.dataset.id));
 document.getElementById('detail-like').addEventListener('click', (event) => toggleLike(event.currentTarget.dataset.id));
 document.getElementById('detail-share').addEventListener('click', (event) => shareItem(event.currentTarget.dataset.id));
 document.getElementById('season-select').addEventListener('change', (event) => {
@@ -2420,7 +2508,7 @@ document.querySelector('[data-close-dialog]').addEventListener('click', () => de
 detailsDialog.addEventListener('close', () => {
   document.body.classList.remove('modal-open');
   if (window.location.hash.startsWith('#/titulo/')) history.replaceState(null, '', window.location.pathname + window.location.search);
-  if (!state.activeVideo && !playerDialog.open && !settingsDialog.open && state.activeItem) focusCard(state.activeItem.id);
+  if (!state.activeVideo && !playerDialog.open && !settingsDialog.open && !shortcutsDialog?.open && state.activeItem) focusCard(state.activeItem.id);
 });
 
 detailsDialog.addEventListener('click', (event) => {
@@ -2450,7 +2538,14 @@ document.getElementById('player-back').addEventListener('click', () => skip(-10)
 document.getElementById('player-forward').addEventListener('click', () => skip(10));
 document.getElementById('player-mute').addEventListener('click', toggleMute);
 playerBoostButton.addEventListener('click', cycleAudioBoost);
+playerSpeedButton?.addEventListener('click', cyclePlaybackRate);
+playerPipButton?.addEventListener('click', togglePictureInPicture);
 document.getElementById('player-fullscreen').addEventListener('click', toggleFullscreen);
+videoPlayer.addEventListener('enterpictureinpicture', updatePipButton);
+videoPlayer.addEventListener('leavepictureinpicture', updatePipButton);
+videoPlayer.addEventListener('loadedmetadata', () => {
+  videoPlayer.playbackRate = state.playbackRate;
+});
 document.getElementById('player-progress').addEventListener('input', (event) => {
   if (videoPlayer.duration) videoPlayer.currentTime = (Number(event.target.value) / 100) * videoPlayer.duration;
 });
@@ -3043,6 +3138,14 @@ settingsDialog.addEventListener('close', () => {
 });
 settingsDialog.addEventListener('click', (event) => {
   if (event.target === settingsDialog) settingsDialog.close();
+});
+
+document.getElementById('shortcuts-close')?.addEventListener('click', closeShortcutsDialog);
+shortcutsDialog?.addEventListener('click', (event) => {
+  if (event.target === shortcutsDialog) closeShortcutsDialog();
+});
+shortcutsDialog?.addEventListener('close', () => {
+  if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open');
 });
 
 const notificationButton = document.getElementById('notification-button');

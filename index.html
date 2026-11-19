@@ -13,7 +13,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e50914'/%3E%3Cpath d='M20 17h8v30h-8zm16 0h8v30h-8z' fill='white'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=23">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -50,6 +50,11 @@
     <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.5 15.5A9 9 0 0 1 8.5 3.5a9 9 0 1 0 12 12Z"/></symbol>
     <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></symbol>
     <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 20h16"/></symbol>
+    <symbol id="icon-pip" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1"/></symbol>
+    <symbol id="icon-speed" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M12 17h.01"/></symbol>
+    <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="icon-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6M9.9 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-4.1 4.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8"/></symbol>
   </svg>
 
   <div class="loading-screen" id="loading-screen" aria-hidden="true">
@@ -207,6 +212,7 @@
           <div class="detail-actions">
             <button class="button button-primary" id="detail-play"><svg><use href="#icon-play"></use></svg><span>Assistir</span></button>
             <button class="button button-secondary" id="detail-list"><svg><use href="#icon-plus"></use></svg><span>Adicionar à lista</span></button>
+            <button class="button button-secondary" id="detail-seen" type="button"><svg><use href="#icon-eye"></use></svg><span>Marcar como visto</span></button>
             <button class="button button-icon" id="detail-like" aria-label="Gostei"><svg><use href="#icon-thumbs-up"></use></svg></button>
             <button class="button button-icon" id="detail-share" aria-label="Compartilhar"><svg><use href="#icon-share"></use></svg></button>
             <button class="button button-secondary" id="detail-omdb" type="button" hidden>Identificar filme</button>
@@ -271,6 +277,8 @@
           <button class="player-icon" id="player-next" aria-label="Próximo episódio" hidden><svg><use href="#icon-chevron"></use></svg></button>
           <button class="player-icon subtitle-button" id="player-subtitles" aria-label="Legendas" aria-expanded="false" aria-keyshortcuts="C" title="Legendas (C)"><svg><use href="#icon-cc"></use></svg></button>
           <button class="player-icon boost-button" id="player-boost" aria-label="Amplificar áudio" aria-keyshortcuts="B" title="Amplificar áudio (B)" hidden><svg><use href="#icon-volume"></use></svg><span id="player-boost-label">1×</span></button>
+          <button class="player-icon speed-button" id="player-speed" aria-label="Velocidade de reprodução" title="Velocidade de reprodução"><span id="player-speed-label">1x</span></button>
+          <button class="player-icon" id="player-pip" aria-label="Picture-in-Picture" title="Picture-in-Picture" hidden><svg><use href="#icon-pip"></use></svg></button>
           <button class="quality-button" id="player-quality">HD</button>
           <button class="player-icon" id="player-fullscreen" aria-label="Tela cheia" aria-keyshortcuts="F" title="Tela cheia (F)"><svg><use href="#icon-expand"></use></svg></button>
         </div>
@@ -472,8 +480,33 @@
     </form>
   </dialog>
 
+  <dialog class="details-dialog settings-dialog shortcuts-dialog" id="shortcuts-dialog" aria-labelledby="shortcuts-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close" id="shortcuts-close" aria-label="Fechar atalhos">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="settings-content">
+        <p class="eyebrow">Ajuda</p>
+        <h1 id="shortcuts-title">Atalhos de teclado</h1>
+        <p class="settings-intro">Use estes atalhos para controlar a reprodução e navegar no NEXA.</p>
+        <ul class="shortcuts-list">
+          <li><kbd>Espaço</kbd> / <kbd>K</kbd><span>Reproduzir ou pausar</span></li>
+          <li><kbd>J</kbd> / <kbd>←</kbd><span>Voltar 10 segundos</span></li>
+          <li><kbd>L</kbd> / <kbd>→</kbd><span>Avançar 10 segundos</span></li>
+          <li><kbd>M</kbd><span>Silenciar / ativar som</span></li>
+          <li><kbd>F</kbd><span>Tela cheia</span></li>
+          <li><kbd>C</kbd><span>Legendas</span></li>
+          <li><kbd>B</kbd><span>Amplificar áudio (quando disponível)</span></li>
+          <li><kbd>Esc</kbd><span>Fechar player, menu ou janela</span></li>
+          <li><kbd>Ctrl</kbd>+<kbd>K</kbd> / <kbd>/</kbd><span>Buscar</span></li>
+          <li><kbd>?</kbd><span>Mostrar esta ajuda</span></li>
+        </ul>
+      </div>
+    </div>
+  </dialog>
+
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>
