@@ -129,7 +129,7 @@
 
     <div class="page-shell">
       <header class="topbar">
-        <button class="icon-button menu-button" id="menu-button" aria-label="Abrir menu">
+        <button class="icon-button menu-button" id="menu-button" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">
           <svg><use href="#icon-menu"></use></svg>
         </button>
         <a class="mobile-brand" href="#" data-view-link="home">NEXA</a>
@@ -194,7 +194,7 @@
     <button data-view="lista"><svg><use href="#icon-bookmark"></use></svg><span>Lista</span></button>
   </nav>
 
-  <dialog class="details-dialog" id="details-dialog" aria-labelledby="detail-title">
+  <dialog class="details-dialog" id="details-dialog" aria-labelledby="detail-hero-title">
     <div class="dialog-scroll">
       <button class="dialog-close details-close" data-close-dialog aria-label="Fechar">
         <svg><use href="#icon-close"></use></svg>
@@ -203,7 +203,6 @@
       <div class="detail-content">
         <div class="detail-main">
           <p class="eyebrow" id="detail-eyebrow"></p>
-          <h1 id="detail-title"></h1>
           <div class="detail-meta" id="detail-meta"></div>
           <div class="detail-actions">
             <button class="button button-primary" id="detail-play"><svg><use href="#icon-play"></use></svg><span>Assistir</span></button>

@@ -1387,9 +1387,12 @@ function icon(name) {
 }
 
 function escapeHtml(value) {
-  const element = document.createElement('div');
-  element.textContent = String(value);
-  return element.innerHTML;
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function getItem(id) {
@@ -1400,17 +1403,22 @@ function getGenres() {
   return ['Todos', ...new Set(currentCatalog().flatMap((item) => item.genres))];
 }
 
+function numericValue(value, fallback = -1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 function sortItems(items) {
   const sorted = [...items];
   if (state.sort === 'relevancia') return sorted;
-  if (state.sort === 'recentes') return sorted.sort((a, b) => b.year - a.year);
-  if (state.sort === 'avaliacao') return sorted.sort((a, b) => b.rating - a.rating);
-  if (state.sort === 'a-z') return sorted.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
+  if (state.sort === 'recentes') return sorted.sort((a, b) => numericValue(b.year) - numericValue(a.year));
+  if (state.sort === 'avaliacao') return sorted.sort((a, b) => numericValue(b.rating) - numericValue(a.rating));
+  if (state.sort === 'a-z') return sorted.sort((a, b) => String(a.title).localeCompare(String(b.title), 'pt-BR'));
   return sorted;
 }
 
 function filteredCatalog(view = state.view) {
-  let items = currentCatalog();
+  let items = [...currentCatalog()];
   if (view === 'filmes') items = items.filter((item) => item.type === 'filme');
   if (view === 'series') items = items.filter((item) => item.type === 'serie');
   if (view === 'filmes' || view === 'series') items.sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
@@ -1443,7 +1451,7 @@ function posterCard(item, options = {}) {
   const progressBar = progress ? `<span class="card-progress" role="progressbar" aria-label="Progresso de ${escapeHtml(item.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}"><span aria-hidden="true" style="width:${progress.percent}%"></span></span>` : '';
   const poster = `
     <div class="poster-wrap">
-      <img src="${item.poster}" alt="Pôster de ${escapeHtml(item.title)}" loading="lazy">
+      <img src="${escapeHtml(item.poster)}" alt="Pôster de ${escapeHtml(item.title)}" loading="lazy">
       ${badge}
       <button class="poster-open" type="button" data-action="details" data-id="${item.id}" aria-label="Ver detalhes de ${escapeHtml(item.title)}"></button>
       <div class="card-overlay">
@@ -1479,7 +1487,7 @@ function sectionRow(title, items, options = {}) {
 function homeHero(item) {
   return `
     <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-backdrop" style="background-image:url('${item.backdrop}')"></div>
+      <div class="hero-backdrop" style="background-image:url('${escapeHtml(item.backdrop)}')"></div>
       <div class="hero-content">
         <span class="hero-badge">${item.original ? 'NEXA Original' : 'Em destaque'}</span>
         <h1 id="hero-title">${escapeHtml(item.title)}</h1>
@@ -1542,7 +1550,7 @@ function albumCard(album) {
   return `
     <article class="album-card">
       <button class="album-cover-button" type="button" data-album="${album.id}" aria-label="Abrir álbum ${escapeHtml(album.title)}">
-        <img src="${album.cover || fallbackArtwork}" alt="Capa de ${escapeHtml(album.title)}" loading="lazy">
+        <img src="${escapeHtml(album.cover || fallbackArtwork)}" alt="Capa de ${escapeHtml(album.title)}" loading="lazy">
         <span class="album-play">${icon('play')}</span>
       </button>
       <strong class="album-title">${escapeHtml(album.title)}</strong>
@@ -1577,7 +1585,7 @@ function renderAlbumView(album) {
     <section class="section-view album-view">
       <button class="back-link" type="button" data-album-back>${icon('chevron')} Todos os álbuns</button>
       <header class="album-header">
-        <img class="album-detail-cover" src="${album.cover || fallbackArtwork}" alt="Capa de ${escapeHtml(album.title)}">
+        <img class="album-detail-cover" src="${escapeHtml(album.cover || fallbackArtwork)}" alt="Capa de ${escapeHtml(album.title)}">
         <div>
           <p class="eyebrow">Álbum</p>
           <h1>${escapeHtml(album.title)}</h1>
@@ -1722,11 +1730,9 @@ function openDetails(id) {
   document.getElementById('detail-hero').style.backgroundImage = `url('${item.backdrop}')`;
   document.getElementById('detail-eyebrow').textContent = item.original ? 'NEXA Original' : typeLabel[item.type];
   const detailHero = document.getElementById('detail-hero');
-  detailHero.innerHTML = `<div class="detail-hero-copy"><span class="detail-logo">${item.original ? 'NEXA' : typeLabel[item.type].toUpperCase()}</span><h1>${escapeHtml(item.title)}</h1></div>`;
-  document.getElementById('detail-title').textContent = item.title;
-  document.getElementById('detail-title').hidden = true;
-  document.getElementById('detail-title').closest('.detail-main').querySelector('.eyebrow').hidden = true;
-  document.getElementById('detail-meta').innerHTML = `<span class="match-score">${item.match}% de escolha</span><span class="meta-divider"></span><span>${item.year}</span><span class="meta-divider"></span><span>${item.maturity}</span><span class="meta-divider"></span><span>${item.duration}</span><span class="meta-divider"></span><span>${item.genres.join(', ')}</span>`;
+  detailHero.innerHTML = `<div class="detail-hero-copy"><span class="detail-logo">${item.original ? 'NEXA' : typeLabel[item.type].toUpperCase()}</span><h1 id="detail-hero-title">${escapeHtml(item.title)}</h1></div>`;
+  document.getElementById('detail-eyebrow').hidden = true;
+  document.getElementById('detail-meta').innerHTML = `<span class="match-score">${item.match}% de escolha</span><span class="meta-divider"></span><span>${escapeHtml(item.year)}</span><span class="meta-divider"></span><span>${escapeHtml(item.maturity)}</span><span class="meta-divider"></span><span>${escapeHtml(item.duration)}</span><span class="meta-divider"></span><span>${escapeHtml(item.genres.join(', '))}</span>`;
   document.getElementById('detail-description').textContent = item.description;
   document.getElementById('detail-genre').textContent = item.genres.join(', ');
   document.getElementById('detail-director').textContent = item.director;
@@ -1772,7 +1778,7 @@ function renderEpisodes(item, seasonIndex) {
     return `
     <article class="episode-item">
       <div class="episode-image">
-        <img src="${thumbnail}" alt="" loading="lazy">
+        <img src="${escapeHtml(thumbnail)}" alt="" loading="lazy">
         <button class="episode-play" type="button" data-action="play-episode" data-id="${item.id}" data-season="${seasonIndex}" data-episode="${index}" aria-label="Assistir ${escapeHtml(episode)}">${icon('play')}</button>
       </div>
       <div class="episode-copy">
@@ -2266,12 +2272,13 @@ function saveProgress() {
   const { item, seasonIndex, episodeIndex, progressKey } = state.activeVideo;
   const percent = Math.min(99, Math.max(1, (videoPlayer.currentTime / videoPlayer.duration) * 100));
   const entry = { percent: Math.round(percent), seconds: Math.round(videoPlayer.currentTime), updatedAt: Date.now() };
-  if (episodeIndex !== null && item.drive) {
+  const hasSeries = episodeIndex !== null && (item.drive || item.local);
+  if (hasSeries) {
     entry.season = seasonIndex;
     entry.episode = episodeIndex;
   }
   state.progress[progressKey || item.id] = entry;
-  if (episodeIndex !== null && item.drive) state.progress[item.id] = entry;
+  if (hasSeries) state.progress[item.id] = entry;
   persistActiveProfile();
 }
 
@@ -2823,6 +2830,12 @@ function isTypingTarget(target) {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]'));
 }
 
+function isTopDialog(dialog) {
+  if (!dialog.open) return false;
+  const openDialogs = document.querySelectorAll('dialog[open]');
+  return openDialogs[openDialogs.length - 1] === dialog;
+}
+
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
@@ -2832,12 +2845,13 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     openSearch();
   }
-  if (event.key === 'Escape' && playerDialog.open) {
+  const playerIsTop = isTopDialog(playerDialog);
+  if (event.key === 'Escape' && playerIsTop) {
     event.preventDefault();
     if (!subtitleMenu.hidden) closeSubtitleMenu();
     else closePlayer();
   }
-  if (playerDialog.open && !detailsDialog.open) {
+  if (playerIsTop && !isTypingTarget(event.target)) {
     if (event.code === 'Space' || event.key.toLowerCase() === 'k') {
       event.preventDefault();
       togglePlay();
@@ -2861,11 +2875,13 @@ document.addEventListener('keydown', (event) => {
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-scrim').classList.remove('visible');
+  document.getElementById('menu-button').setAttribute('aria-expanded', 'false');
 }
 
 document.getElementById('menu-button').addEventListener('click', () => {
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sidebar-scrim').classList.add('visible');
+  document.getElementById('menu-button').setAttribute('aria-expanded', 'true');
 });
 document.getElementById('sidebar-close').addEventListener('click', closeSidebar);
 document.getElementById('sidebar-scrim').addEventListener('click', closeSidebar);

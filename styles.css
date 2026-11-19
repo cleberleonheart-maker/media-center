@@ -98,6 +98,19 @@ body.light-theme [role="switch"]:focus-visible {
   outline-color: #111;
 }
 
+.search-box input:focus-visible,
+.sort-select:focus-visible,
+.season-select:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+body.light-theme .search-box input:focus-visible,
+body.light-theme .sort-select:focus-visible,
+body.light-theme .season-select:focus-visible {
+  outline-color: #111;
+}
+
 img {
   display: block;
   max-width: 100%;
