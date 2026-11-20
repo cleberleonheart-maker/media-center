@@ -2522,7 +2522,12 @@ function shareItem(id) {
                 case 2:
                     _a.sent();
                     return [3 /*break*/, 5];
-                case 3: return [4 /*yield*/, navigator.clipboard.writeText(url)];
+                case 3:
+                    if (!(navigator.clipboard && navigator.clipboard.writeText)) {
+                        showToast('Copiar link não suportado neste navegador.', 'error');
+                        return [3 /*break*/, 5];
+                    }
+                    return [4 /*yield*/, navigator.clipboard.writeText(url)];
                 case 4:
                     _a.sent();
                     showToast('Link copiado para a área de transferência', 'success');
@@ -3136,7 +3141,7 @@ document.getElementById('subtitle-search-run').addEventListener('click', functio
                 _c.label = 1;
             case 1:
                 _c.trys.push([1, 4, , 5]);
-                return [4 /*yield*/, fetch(localApi("/api/local/subtitle/search?".concat(params.toString())), { cache: 'no-store', signal: localFetchSignal() })];
+                return [4 /*yield*/, fetch(localApi("/api/local/subtitle/search?".concat(params.toString())), (function(){var o={cache:'no-store'};var s=localFetchSignal();if(s)o.signal=s;return o;})())];
             case 2:
                 response = _c.sent();
                 return [4 /*yield*/, response.json().catch(function () { return ({}); })];
@@ -3177,12 +3182,7 @@ subtitleResults.addEventListener('click', function (event) { return __awaiter(_t
                 _a.label = 1;
             case 1:
                 _a.trys.push([1, 5, , 6]);
-                return [4 /*yield*/, fetch(localApi('/api/local/subtitle/download'), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(__assign({ subtitleId: button.dataset.subtitleDownload, link: button.dataset.link || '', api: button.dataset.api || '', lang: button.dataset.lang || 'pt' }, (target ? { root: target.rootKey, path: target.path } : {}))),
-                        signal: localFetchSignal()
-                    })];
+                return [4 /*yield*/, fetch(localApi('/api/local/subtitle/download'), (function(){var o={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(__assign({ subtitleId: button.dataset.subtitleDownload, link: button.dataset.link || '', api: button.dataset.api || '', lang: button.dataset.lang || 'pt' }, (target ? { root: target.rootKey, path: target.path } : {})))};var s=localFetchSignal();if(s)o.signal=s;return o;})())];
             case 2:
                 response = _a.sent();
                 return [4 /*yield*/, response.json().catch(function () { return ({}); })];
@@ -3380,45 +3380,138 @@ function isTopDialog(dialog) {
     return openDialogs[openDialogs.length - 1] === dialog;
 }
 document.addEventListener('keydown', function (event) {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    var key = event.key || '';
+    var keyLower = key.toLowerCase();
+    var typing = isTypingTarget(event.target);
+    var keyCode = event.keyCode || event.which || 0;
+    var isBack = key === 'Escape' || key === 'Esc' || key === 'BrowserBack' || key === 'GoBack' || keyCode === 461 || keyCode === 10009 || (key === 'Backspace' && !typing);
+    var openDialog = (function () {
+        var dialogs = document.querySelectorAll('dialog[open]');
+        return dialogs.length ? dialogs[dialogs.length - 1] : null;
+    })();
+
+    if ((event.ctrlKey || event.metaKey) && keyLower === 'k') {
         event.preventDefault();
         openSearch();
+        return;
     }
-    if (event.key === '/' && !isTypingTarget(event.target) && !document.querySelector('dialog[open]')) {
+    if ((key === '/' || (event.code === 'Slash' && !event.shiftKey)) && !typing && !openDialog) {
         event.preventDefault();
         openSearch();
+        return;
     }
+    if ((key === '?' || (event.code === 'Slash' && event.shiftKey)) && !typing) {
+        event.preventDefault();
+        openShortcutsDialog();
+        return;
+    }
+
+    if (isBack) {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar && sidebar.classList.contains('open')) {
+            event.preventDefault();
+            closeSidebar();
+            return;
+        }
+        if (notificationsPopover && !notificationsPopover.hidden) {
+            event.preventDefault();
+            notificationsPopover.hidden = true;
+            if (notificationButton) notificationButton.setAttribute('aria-expanded', 'false');
+            return;
+        }
+        if (profilePopover && !profilePopover.hidden) {
+            event.preventDefault();
+            profilePopover.hidden = true;
+            if (profileButton) profileButton.setAttribute('aria-expanded', 'false');
+            var pb = document.getElementById('profile-button');
+            if (pb) pb.setAttribute('aria-expanded', 'false');
+            return;
+        }
+        if (openDialog === playerDialog) {
+            event.preventDefault();
+            if (!subtitleMenu.hidden)
+                closeSubtitleMenu();
+            else
+                closePlayer();
+            return;
+        }
+        if (openDialog === shortcutsDialog) {
+            event.preventDefault();
+            closeShortcutsDialog();
+            return;
+        }
+        if (openDialog === detailsDialog) {
+            event.preventDefault();
+            detailsDialog.close();
+            return;
+        }
+        if (openDialog === settingsDialog) {
+            event.preventDefault();
+            settingsDialog.close();
+            return;
+        }
+        if (openDialog === subtitleSearchDialog) {
+            event.preventDefault();
+            subtitleSearchDialog.close();
+            return;
+        }
+        if (openDialog === omdbDialog) {
+            event.preventDefault();
+            omdbDialog.close();
+            return;
+        }
+        if (openDialog === profilesDialog) {
+            event.preventDefault();
+            profilesDialog.close();
+            return;
+        }
+        if (openDialog === pinDialog) {
+            event.preventDefault();
+            finishPin(false);
+            return;
+        }
+        if (openDialog) {
+            try { if (typeof openDialog.close === 'function') openDialog.close(); } catch (e) {}
+            return;
+        }
+        return;
+    }
+
     var playerIsTop = isTopDialog(playerDialog);
-    if (event.key === 'Escape' && playerIsTop) {
-        event.preventDefault();
-        if (!subtitleMenu.hidden)
-            closeSubtitleMenu();
-        else
-            closePlayer();
-    }
-    if (playerIsTop && !isTypingTarget(event.target)) {
-        if (event.code === 'Space' || event.key.toLowerCase() === 'k') {
+    if (playerIsTop && !typing) {
+        if (event.code === 'Space' || keyLower === 'k') {
             event.preventDefault();
             togglePlay();
+            return;
         }
-        if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'l')
+        if (key === 'ArrowRight' || keyLower === 'l') {
             skip(10);
-        if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'j')
+            return;
+        }
+        if (key === 'ArrowLeft' || keyLower === 'j') {
             skip(-10);
-        if (event.key.toLowerCase() === 'm')
+            return;
+        }
+        if (keyLower === 'm') {
             toggleMute();
-        if (event.key.toLowerCase() === 'f')
+            return;
+        }
+        if (keyLower === 'f') {
             toggleFullscreen();
-        if (event.key.toLowerCase() === 'c') {
+            return;
+        }
+        if (keyLower === 'c') {
             event.preventDefault();
             if (subtitleMenu.hidden)
                 openSubtitleMenu();
             else
                 closeSubtitleMenu();
+            return;
         }
-        if (event.key.toLowerCase() === 'b' && !playerBoostButton.hidden) {
+        if (keyLower === 'b' && playerBoostButton && !playerBoostButton.hidden) {
             event.preventDefault();
             cycleAudioBoost();
+            return;
         }
     }
 });

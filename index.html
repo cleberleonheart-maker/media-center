@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="vendor/dialog-polyfill.css">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -348,7 +348,7 @@
           <label class="settings-field" for="local-server">Endereço do servidor local
             <input id="local-server" type="text" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8090">
           </label>
-          <p class="settings-note">Use o NEXA no GitHub Pages? Rode <code>python3 local_server.py</code> neste computador e mantenha o endereço acima; o site lê o HD por ele.</p>
+          <p class="settings-note">Para ler o HD: rode <code>python3 local_server.py</code> e informe o endereço de rede do computador (ex.: <code>http://192.168.x.x:8090</code>). No GitHub Pages (HTTPS), alguns navegadores/TVs bloqueiam servidor local HTTP; se falhar, abra o NEXA pelo endereço HTTP mostrado pelo servidor.</p>
           <div class="drive-actions">
             <button class="button button-red" id="local-scan" type="button">Escanear HD</button>
             <button class="button button-secondary" id="local-scan-full" type="button" hidden>Reanalisar tudo</button>
@@ -356,7 +356,7 @@
             <button class="button button-secondary" id="local-clear" type="button" hidden>Remover do NEXA</button>
           </div>
           <p class="settings-note" id="local-status" role="status">Servidor local não conectado.</p>
-          <p class="settings-note">Dica: inicie com <code>python3 local_server.py</code> e abra o NEXA pelo endereço informado no terminal.</p>
+          <p class="settings-note">Dica: para acesso na TV, use o IP da rede do computador no campo acima e garanta que TV e computador estejam na mesma rede.</p>
           <p class="eyebrow">Legendas online</p>
           <p class="settings-intro">Busque legendas no OpenSubtitles. A chave da API e o login ficam salvos apenas no servidor local (arquivo <code>.data/local.json</code>).</p>
           <label class="settings-field" for="subtitle-api-key">Chave da API
@@ -515,6 +515,6 @@
   <script src="vendor/element-closest.js"></script>
   <script src="vendor/dialog-polyfill.js"></script>
   <script src="vendor/compat.js"></script>
-  <script src="app.js?v=28"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>

@@ -51,6 +51,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100svh;
   overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
@@ -84,8 +86,10 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [role="button"]:focus-visible,
-[role="switch"]:focus-visible {
-  outline: 2px solid #fff;
+[role="switch"]:focus-visible,
+button:focus,
+a:focus {
+  outline: 3px solid #fff;
   outline-offset: 3px;
 }
 
