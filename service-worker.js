@@ -1,9 +1,12 @@
-const CACHE_NAME = 'nexa-shell-v23';
+const CACHE_NAME = 'nexa-shell-v24';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=23',
-  './app.js?v=23',
+  './styles.css?v=24',
+  './app.js?v=24',
+  './vendor/dialog-polyfill.css',
+  './vendor/dialog-polyfill.js',
+  './vendor/compat.js',
   './manifest.json',
   './icons/icon-180.png',
   './icons/icon-192.png',
