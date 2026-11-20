@@ -4,8 +4,10 @@ var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __propIsEnum = Object.prototype.propertyIsEnumerable;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __spreadValues = (a, b) => {
+var __defNormalProp = function(obj, key, value) {
+  return key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+};
+var __spreadValues = function(a, b) {
   for (var prop in b || (b = {}))
     if (__hasOwnProp.call(b, prop))
       __defNormalProp(a, prop, b[prop]);
@@ -16,24 +18,28 @@ var __spreadValues = (a, b) => {
     }
   return a;
 };
-var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
-var __async = (__this, __arguments, generator) => {
-  return new Promise((resolve, reject) => {
-    var fulfilled = (value) => {
+var __spreadProps = function(a, b) {
+  return __defProps(a, __getOwnPropDescs(b));
+};
+var __async = function(__this, __arguments, generator) {
+  return new Promise(function(resolve, reject) {
+    var fulfilled = function(value) {
       try {
         step(generator.next(value));
       } catch (e) {
         reject(e);
       }
     };
-    var rejected = (value) => {
+    var rejected = function(value) {
       try {
         step(generator.throw(value));
       } catch (e) {
         reject(e);
       }
     };
-    var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+    var step = function(x) {
+      return x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+    };
     step((generator = generator.apply(__this, __arguments)).next());
   });
 };
@@ -367,7 +373,7 @@ const artworkAssets = {
   "vigilia": ["sHFlbKS3WLqMnp9t2ghADIJFnuQ.jpg", "56v2KjBlU4XaOv9rVYEQypROD7P.jpg"]
 };
 const demoVideo = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
-catalog.forEach((item) => {
+catalog.forEach(function(item) {
   const assets = artworkAssets[item.id];
   if (!assets) return;
   item.poster = `https://image.tmdb.org/t/p/w780/${assets[0]}`;
@@ -419,8 +425,12 @@ function normalizeProfile(raw, index = 0) {
     kids: Boolean(source.kids),
     pin: pin.length === 4 ? pin : "",
     color: /^#[0-9a-f]{6}$/i.test(source.color || "") ? source.color : PROFILE_COLORS[index % PROFILE_COLORS.length],
-    list: Array.isArray(source.list) ? source.list.filter((id) => typeof id === "string") : [],
-    liked: Array.isArray(source.liked) ? source.liked.filter((id) => typeof id === "string") : [],
+    list: Array.isArray(source.list) ? source.list.filter(function(id) {
+      return typeof id === "string";
+    }) : [],
+    liked: Array.isArray(source.liked) ? source.liked.filter(function(id) {
+      return typeof id === "string";
+    }) : [],
     progress: source.progress && typeof source.progress === "object" && !Array.isArray(source.progress) ? __spreadValues({}, source.progress) : {}
   };
 }
@@ -442,9 +452,13 @@ function loadProfiles() {
 }
 const profiles = loadProfiles();
 let activeProfileId = storage.get(ACTIVE_PROFILE_KEY, profiles[0].id);
-if (!profiles.some((profile) => profile.id === activeProfileId)) activeProfileId = profiles[0].id;
+if (!profiles.some(function(profile) {
+  return profile.id === activeProfileId;
+})) activeProfileId = profiles[0].id;
 function activeProfile() {
-  return profiles.find((profile) => profile.id === activeProfileId) || profiles[0];
+  return profiles.find(function(profile) {
+    return profile.id === activeProfileId;
+  }) || profiles[0];
 }
 function saveProfiles() {
   storage.set(PROFILES_KEY, profiles);
@@ -490,7 +504,9 @@ let subtitleCounter = 0;
 function currentCatalog() {
   var _a2;
   if (!((_a2 = activeProfile()) == null ? void 0 : _a2.kids)) return catalog;
-  return catalog.filter((item) => KIDS_MATURITY.has(item.maturity));
+  return catalog.filter(function(item) {
+    return KIDS_MATURITY.has(item.maturity);
+  });
 }
 function isAllowedItem(item) {
   var _a2;
@@ -602,16 +618,16 @@ function findDriveSubtitles(videoFile, subtitles, apiKey) {
   const core = driveSubtitleCore(videoFile.name);
   if (!core) return [];
   const parentId = ((_b2 = (_a2 = videoFile.ancestors) == null ? void 0 : _a2[videoFile.ancestors.length - 1]) == null ? void 0 : _b2.id) || null;
-  const matches = subtitles.filter((file) => {
+  const matches = subtitles.filter(function(file) {
     const subCore = driveSubtitleCore(file.name);
     return subCore && (subCore === core || core.startsWith(`${subCore}-`) || subCore.startsWith(`${core}-`));
   });
-  const sameFolder = matches.filter((file) => {
+  const sameFolder = matches.filter(function(file) {
     var _a3, _b3;
     return (((_b3 = (_a3 = file.ancestors) == null ? void 0 : _a3[file.ancestors.length - 1]) == null ? void 0 : _b3.id) || null) === parentId;
   });
   const chosen = sameFolder.length ? sameFolder : matches;
-  return chosen.map((file) => {
+  return chosen.map(function(file) {
     const language = subtitleLanguage(file.name);
     return {
       id: `drive-sub-${file.id}`,
@@ -629,7 +645,11 @@ function srtToVtt(text) {
   if (!normalized) return "";
   if (/^WEBVTT/i.test(normalized)) return `${normalized}
 `;
-  const cueText = normalized.replace(/(\d{2}:\d{2}:\d{2}),(\d{1,3})/g, (_match, stamp, millis) => `${stamp}.${millis.padEnd(3, "0")}`).replace(/(\d{2}:\d{2}),(\d{1,3})/g, (_match, stamp, millis) => `00:${stamp}.${millis.padEnd(3, "0")}`);
+  const cueText = normalized.replace(/(\d{2}:\d{2}:\d{2}),(\d{1,3})/g, function(_match, stamp, millis) {
+    return `${stamp}.${millis.padEnd(3, "0")}`;
+  }).replace(/(\d{2}:\d{2}),(\d{1,3})/g, function(_match, stamp, millis) {
+    return `00:${stamp}.${millis.padEnd(3, "0")}`;
+  });
   return `WEBVTT
 
 ${cueText}
@@ -718,11 +738,15 @@ function normalizeDriveKey(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "biblioteca";
 }
 function pickDriveArtwork(images, folderId, fallbackFileId) {
-  const inFolder = images.filter((image) => {
+  const inFolder = images.filter(function(image) {
     var _a2;
-    return (_a2 = image.ancestors) == null ? void 0 : _a2.some((ancestor) => ancestor.id === folderId);
+    return (_a2 = image.ancestors) == null ? void 0 : _a2.some(function(ancestor) {
+      return ancestor.id === folderId;
+    });
   });
-  const artwork = inFolder.find((image) => /^(poster|folder|cover|fanart|backdrop)/i.test(image.name)) || inFolder[0];
+  const artwork = inFolder.find(function(image) {
+    return /^(poster|folder|cover|fanart|backdrop)/i.test(image.name);
+  }) || inFolder[0];
   const imageId = (artwork == null ? void 0 : artwork.id) || fallbackFileId;
   return {
     poster: driveThumbnail(imageId, 780),
@@ -736,12 +760,14 @@ function buildDriveCatalog(files, rootName, apiKey) {
   const movieItems = [];
   const seriesMap = /* @__PURE__ */ new Map();
   const rootIsSeries = DRIVE_SERIES_HINT.test(rootName || "");
-  videos.forEach((file) => {
+  videos.forEach(function(file) {
     var _a2, _b2, _c2, _d2;
     const ancestors = file.ancestors || [];
-    const names = ancestors.map((ancestor) => ancestor.name);
+    const names = ancestors.map(function(ancestor) {
+      return ancestor.name;
+    });
     let seasonFolderIndex = -1;
-    names.forEach((name, index) => {
+    names.forEach(function(name, index) {
       if (parseSeasonNumber(name) !== null) seasonFolderIndex = index;
     });
     const episodeInfo = parseEpisodeInfo(file.name);
@@ -784,7 +810,9 @@ function buildDriveCatalog(files, rootName, apiKey) {
       return;
     }
     let seriesRoot = null;
-    const hintIndex = names.findIndex((name) => DRIVE_SERIES_HINT.test(name));
+    const hintIndex = names.findIndex(function(name) {
+      return DRIVE_SERIES_HINT.test(name);
+    });
     if (hintIndex >= 0) seriesRoot = ancestors[hintIndex + 1] || null;
     if (!seriesRoot && seasonFolderIndex > 0) seriesRoot = ancestors[seasonFolderIndex - 1];
     if (!seriesRoot && seasonFolderIndex < 0 && episodeInfo.explicit && ancestors.length) seriesRoot = ancestors[0];
@@ -806,25 +834,29 @@ function buildDriveCatalog(files, rootName, apiKey) {
     if (!entry.seasons.has(seasonNumber)) entry.seasons.set(seasonNumber, []);
     entry.seasons.get(seasonNumber).push({ file, episodeNumber, title: null });
   });
-  const seriesItems = [...seriesMap.values()].map((entry) => {
+  const seriesItems = [...seriesMap.values()].map(function(entry) {
     var _a2, _b2, _c2;
-    const seasons = [...entry.seasons.entries()].sort(([a], [b]) => a - b).map(([seasonNumber, rawEpisodes]) => {
-      const episodes = [...rawEpisodes].sort((a, b) => {
+    const seasons = [...entry.seasons.entries()].sort(function([a], [b]) {
+      return a - b;
+    }).map(function([seasonNumber, rawEpisodes]) {
+      const episodes = [...rawEpisodes].sort(function(a, b) {
         if (a.episodeNumber == null && b.episodeNumber == null) return a.file.name.localeCompare(b.file.name, "pt-BR");
         if (a.episodeNumber == null) return 1;
         if (b.episodeNumber == null) return -1;
         return a.episodeNumber - b.episodeNumber || a.file.name.localeCompare(b.file.name, "pt-BR");
       });
       let nextNumber = 1;
-      episodes.forEach((episode) => {
+      episodes.forEach(function(episode) {
         if (episode.episodeNumber == null) {
-          while (episodes.some((candidate) => candidate.episodeNumber === nextNumber)) nextNumber += 1;
+          while (episodes.some(function(candidate) {
+            return candidate.episodeNumber === nextNumber;
+          })) nextNumber += 1;
           episode.episodeNumber = nextNumber;
         }
         nextNumber = Math.max(nextNumber, episode.episodeNumber + 1);
         episode.title = cleanEpisodeTitle(episode.file.name, episode.episodeNumber);
       });
-      const episodeFiles = episodes.map((episode) => {
+      const episodeFiles = episodes.map(function(episode) {
         var _a3;
         const durationSeconds = ((_a3 = episode.file.videoMediaMetadata) == null ? void 0 : _a3.durationMillis) ? Number(episode.file.videoMediaMetadata.durationMillis) / 1e3 : null;
         return {
@@ -841,11 +873,15 @@ function buildDriveCatalog(files, rootName, apiKey) {
       });
       return {
         name: `Temporada ${seasonNumber}`,
-        episodes: episodeFiles.map((episode) => episode.title),
+        episodes: episodeFiles.map(function(episode) {
+          return episode.title;
+        }),
         episodeFiles
       };
     });
-    const allEpisodes = seasons.flatMap((season) => season.episodeFiles);
+    const allEpisodes = seasons.flatMap(function(season) {
+      return season.episodeFiles;
+    });
     const firstEpisode = allEpisodes[0];
     const art = pickDriveArtwork(images, ((_a2 = entry.root) == null ? void 0 : _a2.id) || (firstEpisode == null ? void 0 : firstEpisode.fileId), firstEpisode == null ? void 0 : firstEpisode.fileId);
     const year = entry.year || ((firstEpisode == null ? void 0 : firstEpisode.modifiedTime) ? new Date(firstEpisode.modifiedTime).getFullYear() : null) || (/* @__PURE__ */ new Date()).getFullYear();
@@ -868,7 +904,9 @@ function buildDriveCatalog(files, rootName, apiKey) {
       seasons,
       drive: true,
       driveFolderId: ((_c2 = entry.root) == null ? void 0 : _c2.id) || null,
-      playable: allEpisodes.some((episode) => episode.playable),
+      playable: allEpisodes.some(function(episode) {
+        return episode.playable;
+      }),
       new: true
     };
   });
@@ -891,7 +929,9 @@ function listDriveFolder(folderId, apiKey) {
       if (pageToken) url.searchParams.set("pageToken", pageToken);
       const response = yield fetch(url.toString(), { cache: "no-store" });
       if (!response.ok) {
-        const payload = yield response.json().catch(() => null);
+        const payload = yield response.json().catch(function() {
+          return null;
+        });
         const error = new Error(((_a2 = payload == null ? void 0 : payload.error) == null ? void 0 : _a2.message) || `HTTP ${response.status}`);
         error.status = response.status;
         throw error;
@@ -912,7 +952,9 @@ function getDriveFolderMeta(folderId, apiKey) {
     url.searchParams.set("supportsAllDrives", "true");
     const response = yield fetch(url.toString(), { cache: "no-store" });
     if (!response.ok) {
-      const payload = yield response.json().catch(() => null);
+      const payload = yield response.json().catch(function() {
+        return null;
+      });
       const error = new Error(((_a2 = payload == null ? void 0 : payload.error) == null ? void 0 : _a2.message) || `HTTP ${response.status}`);
       error.status = response.status;
       throw error;
@@ -953,7 +995,9 @@ function setDriveStatus(message, type = "") {
   status.classList.toggle("is-success", type === "success");
 }
 function updateDriveNavCount() {
-  const count = catalog.filter((item) => item.drive).length;
+  const count = catalog.filter(function(item) {
+    return item.drive;
+  }).length;
   const badge = document.getElementById("drive-count");
   if (!badge) return;
   badge.textContent = count;
@@ -996,7 +1040,9 @@ function loadDriveLibrary(_0) {
     if (connectButton) connectButton.disabled = true;
     setDriveStatus("Lendo a pasta do Drive... Isso pode levar alguns segundos.");
     try {
-      const meta = yield getDriveFolderMeta(config.folderId, config.apiKey).catch(() => null);
+      const meta = yield getDriveFolderMeta(config.folderId, config.apiKey).catch(function() {
+        return null;
+      });
       const resolvedConfig = {
         folderId: config.folderId,
         apiKey: config.apiKey,
@@ -1007,17 +1053,23 @@ function loadDriveLibrary(_0) {
       const items = buildDriveCatalog(account.files, resolvedConfig.folderName, resolvedConfig.apiKey);
       applyDriveItems(items);
       state.driveConfig = resolvedConfig;
-      const episodeCount = items.reduce((total, item) => {
+      const episodeCount = items.reduce(function(total, item) {
         var _a2;
-        return total + (((_a2 = item.seasons) == null ? void 0 : _a2.reduce((sum, season) => sum + season.episodes.length, 0)) || 0);
+        return total + (((_a2 = item.seasons) == null ? void 0 : _a2.reduce(function(sum, season) {
+          return sum + season.episodes.length;
+        }, 0)) || 0);
       }, 0);
       const sync = { at: Date.now(), items: items.length, files: account.files.length, folders: account.folders, episodes: episodeCount };
       storage.set("nexa-drive", resolvedConfig);
       storage.set("nexa-drive-cache", items);
       storage.set("nexa-drive-sync", sync);
       updateDriveSettingsUI();
-      const movieCount = items.filter((item) => item.type === "filme").length;
-      const seriesCount = items.filter((item) => item.type === "serie").length;
+      const movieCount = items.filter(function(item) {
+        return item.type === "filme";
+      }).length;
+      const seriesCount = items.filter(function(item) {
+        return item.type === "serie";
+      }).length;
       const episodeLabel = episodeCount ? ` \u2022 ${episodeCount} epis\xF3dio${episodeCount === 1 ? "" : "s"} em ${account.files.length} arquivos` : "";
       setDriveStatus(`${items.length} t\xEDtulos encontrados: ${movieCount} filme${movieCount === 1 ? "" : "s"} e ${seriesCount} s\xE9rie${seriesCount === 1 ? "" : "s"}${episodeLabel}.`, "success");
       if (state.view === "busca") handleSearch(state.query);
@@ -1081,7 +1133,9 @@ function setLocalStatus(message, type = "") {
   status.classList.toggle("is-success", type === "success");
 }
 function updateLocalNavCount() {
-  const count = catalog.filter((item) => item.local).length;
+  const count = catalog.filter(function(item) {
+    return item.local;
+  }).length;
   const badge = document.getElementById("local-count");
   if (!badge) return;
   badge.textContent = count;
@@ -1106,7 +1160,9 @@ function localServerHint() {
 function localFetchSignal(timeout = 3e4) {
   if (typeof AbortController === "undefined") return void 0;
   const controller = new AbortController();
-  window.setTimeout(() => controller.abort(), timeout);
+  window.setTimeout(function() {
+    return controller.abort();
+  }, timeout);
   return controller.signal;
 }
 function localApi(path) {
@@ -1125,25 +1181,37 @@ function localizeItem(item) {
   copy.poster = localUrl(copy.poster);
   copy.backdrop = localUrl(copy.backdrop);
   if (Array.isArray(copy.subtitles)) {
-    copy.subtitles = copy.subtitles.map((subtitle) => __spreadProps(__spreadValues({}, subtitle), { url: localUrl(subtitle.url) }));
+    copy.subtitles = copy.subtitles.map(function(subtitle) {
+      return __spreadProps(__spreadValues({}, subtitle), { url: localUrl(subtitle.url) });
+    });
   }
   if (Array.isArray(copy.seasons)) {
-    copy.seasons = copy.seasons.map((season) => __spreadProps(__spreadValues({}, season), {
-      episodeFiles: (season.episodeFiles || []).map((episode) => __spreadProps(__spreadValues({}, episode), {
-        video: localUrl(episode.video),
-        transcodeUrl: localUrl(episode.transcodeUrl),
-        thumbnail: localUrl(episode.thumbnail),
-        subtitles: (episode.subtitles || []).map((subtitle) => __spreadProps(__spreadValues({}, subtitle), { url: localUrl(subtitle.url) }))
-      }))
-    }));
+    copy.seasons = copy.seasons.map(function(season) {
+      return __spreadProps(__spreadValues({}, season), {
+        episodeFiles: (season.episodeFiles || []).map(function(episode) {
+          return __spreadProps(__spreadValues({}, episode), {
+            video: localUrl(episode.video),
+            transcodeUrl: localUrl(episode.transcodeUrl),
+            thumbnail: localUrl(episode.thumbnail),
+            subtitles: (episode.subtitles || []).map(function(subtitle) {
+              return __spreadProps(__spreadValues({}, subtitle), { url: localUrl(subtitle.url) });
+            })
+          });
+        })
+      });
+    });
   }
   return copy;
 }
 function localizeAlbums(albums) {
-  return (albums || []).map((album) => __spreadProps(__spreadValues({}, album), {
-    cover: localUrl(album.cover),
-    tracks: (album.tracks || []).map((track) => __spreadProps(__spreadValues({}, track), { url: localUrl(track.url) }))
-  }));
+  return (albums || []).map(function(album) {
+    return __spreadProps(__spreadValues({}, album), {
+      cover: localUrl(album.cover),
+      tracks: (album.tracks || []).map(function(track) {
+        return __spreadProps(__spreadValues({}, track), { url: localUrl(track.url) });
+      })
+    });
+  });
 }
 function applyLocalItems(items) {
   for (let index = catalog.length - 1; index >= 0; index -= 1) {
@@ -1174,7 +1242,9 @@ function updateLocalSettingsUI() {
   }
   const enrichButton = document.getElementById("local-omdb-enrich");
   if (enrichButton) enrichButton.hidden = !((_d2 = state.localConfig) == null ? void 0 : _d2.hasOmdbKey);
-  const hasItems = catalog.some((item) => item.local);
+  const hasItems = catalog.some(function(item) {
+    return item.local;
+  });
   clearButton.hidden = !hasItems;
   const fullScanButton = document.getElementById("local-scan-full");
   if (fullScanButton) fullScanButton.hidden = !((_e = state.localConfig) == null ? void 0 : _e.hasLibrary) || localLoading;
@@ -1195,7 +1265,7 @@ function updateLocalSettingsUI() {
   }
 }
 function localDelay(ms) {
-  return new Promise((resolve) => {
+  return new Promise(function(resolve) {
     window.setTimeout(resolve, ms);
   });
 }
@@ -1241,8 +1311,12 @@ function loadLocalLibrary() {
       const sync = {
         at: data.at || Date.now(),
         items: items.length,
-        movies: stats.movies || items.filter((item) => item.type === "filme").length,
-        series: stats.series || items.filter((item) => item.type === "serie").length,
+        movies: stats.movies || items.filter(function(item) {
+          return item.type === "filme";
+        }).length,
+        series: stats.series || items.filter(function(item) {
+          return item.type === "serie";
+        }).length,
         episodes: stats.episodes || 0,
         albums: stats.albums || albums.length,
         tracks: stats.tracks || 0
@@ -1291,7 +1365,9 @@ function scanLocalLibrary() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ root })
       });
-      const data = yield response.json().catch(() => ({}));
+      const data = yield response.json().catch(function() {
+        return {};
+      });
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       storage.set("nexa-local-root", data.root || root);
       storage.set("nexa-local-config", { root: data.root || root });
@@ -1318,7 +1394,9 @@ function rescanLocalLibrary() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ full: true })
       });
-      const data = yield response.json().catch(() => ({}));
+      const data = yield response.json().catch(function() {
+        return {};
+      });
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       setLocalStatus("Rean\xE1lise iniciada no servidor local.");
       yield loadLocalLibrary();
@@ -1363,10 +1441,14 @@ function escapeHtml(value) {
   return String(value != null ? value : "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 function getItem(id) {
-  return catalog.find((item) => item.id === id);
+  return catalog.find(function(item) {
+    return item.id === id;
+  });
 }
 function getGenres() {
-  return ["Todos", ...new Set(currentCatalog().flatMap((item) => item.genres))];
+  return ["Todos", ...new Set(currentCatalog().flatMap(function(item) {
+    return item.genres;
+  }))];
 }
 function numericValue(value, fallback = -1) {
   const number = Number(value);
@@ -1375,31 +1457,61 @@ function numericValue(value, fallback = -1) {
 function sortItems(items) {
   const sorted = [...items];
   if (state.sort === "relevancia") return sorted;
-  if (state.sort === "recentes") return sorted.sort((a, b) => numericValue(b.year) - numericValue(a.year));
-  if (state.sort === "avaliacao") return sorted.sort((a, b) => numericValue(b.rating) - numericValue(a.rating));
-  if (state.sort === "a-z") return sorted.sort((a, b) => String(a.title).localeCompare(String(b.title), "pt-BR"));
+  if (state.sort === "recentes") return sorted.sort(function(a, b) {
+    return numericValue(b.year) - numericValue(a.year);
+  });
+  if (state.sort === "avaliacao") return sorted.sort(function(a, b) {
+    return numericValue(b.rating) - numericValue(a.rating);
+  });
+  if (state.sort === "a-z") return sorted.sort(function(a, b) {
+    return String(a.title).localeCompare(String(b.title), "pt-BR");
+  });
   return sorted;
 }
 function filteredCatalog(view = state.view) {
   let items = [...currentCatalog()];
-  if (view === "filmes") items = items.filter((item) => item.type === "filme");
-  if (view === "series") items = items.filter((item) => item.type === "serie");
-  if (view === "filmes" || view === "series") items.sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
-  if (view === "originais") items = items.filter((item) => item.original);
-  if (view === "novidades") items = items.filter((item) => item.new);
-  if (view === "lista") items = items.filter((item) => state.list.has(item.id));
+  if (view === "filmes") items = items.filter(function(item) {
+    return item.type === "filme";
+  });
+  if (view === "series") items = items.filter(function(item) {
+    return item.type === "serie";
+  });
+  if (view === "filmes" || view === "series") items.sort(function(a, b) {
+    return Number(Boolean(b.drive)) - Number(Boolean(a.drive));
+  });
+  if (view === "originais") items = items.filter(function(item) {
+    return item.original;
+  });
+  if (view === "novidades") items = items.filter(function(item) {
+    return item.new;
+  });
+  if (view === "lista") items = items.filter(function(item) {
+    return state.list.has(item.id);
+  });
   if (view === "busca") {
     const filters = state.searchFilters;
-    if (filters.type !== "todos") items = items.filter((item) => item.type === filters.type);
-    if (filters.genre !== "Todos") items = items.filter((item) => item.genres.includes(filters.genre));
-    if (filters.year !== "todos") items = items.filter((item) => String(item.year) === filters.year);
-    if (Number(filters.rating) > 0) items = items.filter((item) => Number(item.rating) >= Number(filters.rating));
+    if (filters.type !== "todos") items = items.filter(function(item) {
+      return item.type === filters.type;
+    });
+    if (filters.genre !== "Todos") items = items.filter(function(item) {
+      return item.genres.includes(filters.genre);
+    });
+    if (filters.year !== "todos") items = items.filter(function(item) {
+      return String(item.year) === filters.year;
+    });
+    if (Number(filters.rating) > 0) items = items.filter(function(item) {
+      return Number(item.rating) >= Number(filters.rating);
+    });
   } else if (state.genre !== "Todos") {
-    items = items.filter((item) => item.genres.includes(state.genre));
+    items = items.filter(function(item) {
+      return item.genres.includes(state.genre);
+    });
   }
   if (state.query) {
     const query = state.query.toLocaleLowerCase("pt-BR");
-    items = items.filter((item) => [item.title, item.description, item.cast.join(" "), item.genres.join(" ")].join(" ").toLocaleLowerCase("pt-BR").includes(query));
+    items = items.filter(function(item) {
+      return [item.title, item.description, item.cast.join(" "), item.genres.join(" ")].join(" ").toLocaleLowerCase("pt-BR").includes(query);
+    });
   }
   return sortItems(items);
 }
@@ -1432,7 +1544,9 @@ function posterCard(item, options = {}) {
 }
 function sectionRow(title, items, options = {}) {
   if (!items.length) return "";
-  const cards = items.map((item, index) => posterCard(item, { top: options.top, rank: index + 1 })).join("");
+  const cards = items.map(function(item, index) {
+    return posterCard(item, { top: options.top, rank: index + 1 });
+  }).join("");
   return `
     <section class="content-section" data-section>
       <div class="section-heading">
@@ -1466,19 +1580,43 @@ function homeHero(item) {
 }
 function renderHome() {
   const visible = currentCatalog();
-  const continueItems = visible.filter((item) => isItemInProgress(item)).sort((a, b) => {
+  const continueItems = visible.filter(function(item) {
+    return isItemInProgress(item);
+  }).sort(function(a, b) {
     var _a2, _b2;
     return (((_a2 = state.progress[b.id]) == null ? void 0 : _a2.percent) || 0) - (((_b2 = state.progress[a.id]) == null ? void 0 : _b2.percent) || 0);
   });
-  const trending = visible.filter((item) => item.trending);
-  const top = visible.filter((item) => item.top).slice(0, 10);
-  const originals = visible.filter((item) => item.original);
-  const movies = visible.filter((item) => item.type === "filme").sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
-  const series = visible.filter((item) => item.type === "serie").sort((a, b) => Number(Boolean(b.drive)) - Number(Boolean(a.drive)));
-  const documentaries = visible.filter((item) => item.type === "documentario");
-  const fresh = visible.filter((item) => item.new);
-  const drive = visible.filter((item) => item.drive);
-  const local = visible.filter((item) => item.local);
+  const trending = visible.filter(function(item) {
+    return item.trending;
+  });
+  const top = visible.filter(function(item) {
+    return item.top;
+  }).slice(0, 10);
+  const originals = visible.filter(function(item) {
+    return item.original;
+  });
+  const movies = visible.filter(function(item) {
+    return item.type === "filme";
+  }).sort(function(a, b) {
+    return Number(Boolean(b.drive)) - Number(Boolean(a.drive));
+  });
+  const series = visible.filter(function(item) {
+    return item.type === "serie";
+  }).sort(function(a, b) {
+    return Number(Boolean(b.drive)) - Number(Boolean(a.drive));
+  });
+  const documentaries = visible.filter(function(item) {
+    return item.type === "documentario";
+  });
+  const fresh = visible.filter(function(item) {
+    return item.new;
+  });
+  const drive = visible.filter(function(item) {
+    return item.drive;
+  });
+  const local = visible.filter(function(item) {
+    return item.local;
+  });
   const hero = visible[0];
   const empty = `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon("film")}</span><h2>Nenhum t\xEDtulo dispon\xEDvel</h2><p>N\xE3o h\xE1 t\xEDtulos adequados para este perfil no momento.</p></div></div>`;
   mainContent.innerHTML = `
@@ -1525,7 +1663,7 @@ function renderMusicView() {
     return;
   }
   const albums = currentMusicAlbums();
-  const trackCount = albums.reduce((total, album) => {
+  const trackCount = albums.reduce(function(total, album) {
     var _a2;
     return total + (((_a2 = album.tracks) == null ? void 0 : _a2.length) || 0);
   }, 0);
@@ -1554,14 +1692,16 @@ function renderAlbumView(album) {
         </div>
       </header>
       <ol class="track-list">
-        ${(album.tracks || []).map((track, index) => `
+        ${(album.tracks || []).map(function(track, index) {
+    return `
           <li class="${index === trackIndex ? "playing" : ""}">
             <button type="button" data-track="${album.id}" data-track-index="${index}">
               <span class="track-number">${track.number || index + 1}</span>
               <span class="track-copy"><strong>${escapeHtml(track.title)}</strong><small>${escapeHtml(track.artist || album.artist || "")}</small></span>
               <span class="track-action">${index === trackIndex ? icon("volume") : icon("play")}</span>
             </button>
-          </li>`).join("")}
+          </li>`;
+  }).join("")}
       </ol>
     </section>`;
   window.scrollTo({ top: 0, behavior: "instant" });
@@ -1577,7 +1717,9 @@ function showMusicBar(track, album) {
 }
 function playAlbumTrack(albumId, index) {
   var _a2;
-  const album = state.musicAlbums.find((entry) => entry.id === albumId);
+  const album = state.musicAlbums.find(function(entry) {
+    return entry.id === albumId;
+  });
   const track = (_a2 = album == null ? void 0 : album.tracks) == null ? void 0 : _a2[index];
   if (!album || !track) return;
   state.activeAlbum = album;
@@ -1587,11 +1729,15 @@ function playAlbumTrack(albumId, index) {
   musicAudio.dataset.trackIndex = String(index);
   showMusicBar(track, album);
   const promise = musicAudio.play();
-  if (promise) promise.catch(() => showToast("Clique em reproduzir para ouvir a m\xFAsica", "success"));
+  if (promise) promise.catch(function() {
+    return showToast("Clique em reproduzir para ouvir a m\xFAsica", "success");
+  });
   renderAlbumView(album);
 }
 function playNextTrack() {
-  const album = state.musicAlbums.find((entry) => entry.id === musicAudio.dataset.albumId);
+  const album = state.musicAlbums.find(function(entry) {
+    return entry.id === musicAudio.dataset.albumId;
+  });
   if (!album) return;
   const next = Number(musicAudio.dataset.trackIndex || 0) + 1;
   if (next < album.tracks.length) playAlbumTrack(album.id, next);
@@ -1628,8 +1774,12 @@ function browseView() {
     lista: ["Minha lista", "Tudo o que voc\xEA guardou para assistir depois."]
   };
   const [title, subtitle] = titles[state.view] || ["Cat\xE1logo", "Encontre sua pr\xF3xima hist\xF3ria."];
-  const chips = getGenres().map((genre) => `<button class="filter-chip ${state.genre === genre ? "active" : ""}" type="button" data-genre="${genre}">${genre}</button>`).join("");
-  const content = items.length ? `<div class="media-grid">${items.map((item) => posterCard(item)).join("")}</div>` : browseEmptyState();
+  const chips = getGenres().map(function(genre) {
+    return `<button class="filter-chip ${state.genre === genre ? "active" : ""}" type="button" data-genre="${genre}">${genre}</button>`;
+  }).join("");
+  const content = items.length ? `<div class="media-grid">${items.map(function(item) {
+    return posterCard(item);
+  }).join("")}</div>` : browseEmptyState();
   mainContent.innerHTML = `
     <section class="section-view">
       <header class="section-header"><div><p class="eyebrow">NEXA cat\xE1logo</p><h1>${title}</h1><p>${subtitle}</p></div></header>
@@ -1708,11 +1858,19 @@ function openDetails(id) {
   episodeSection.hidden = !((_a2 = item.seasons) == null ? void 0 : _a2.length);
   if ((_b2 = item.seasons) == null ? void 0 : _b2.length) {
     const select = document.getElementById("season-select");
-    select.innerHTML = item.seasons.map((season, index) => `<option value="${index}">${season.name}</option>`).join("");
+    select.innerHTML = item.seasons.map(function(season, index) {
+      return `<option value="${index}">${season.name}</option>`;
+    }).join("");
     renderEpisodes(item, 0);
   }
-  const related = currentCatalog().filter((candidate) => candidate.id !== item.id && candidate.genres.some((genre) => item.genres.includes(genre))).slice(0, 4);
-  document.getElementById("related-grid").innerHTML = related.map((candidate) => posterCard(candidate)).join("");
+  const related = currentCatalog().filter(function(candidate) {
+    return candidate.id !== item.id && candidate.genres.some(function(genre) {
+      return item.genres.includes(genre);
+    });
+  }).slice(0, 4);
+  document.getElementById("related-grid").innerHTML = related.map(function(candidate) {
+    return posterCard(candidate);
+  }).join("");
   if (detailsDialog.open) detailsDialog.close();
   detailsDialog.showModal();
   document.body.classList.add("modal-open");
@@ -1720,7 +1878,7 @@ function openDetails(id) {
 }
 function renderEpisodes(item, seasonIndex) {
   const season = item.seasons[seasonIndex];
-  document.getElementById("episode-list").innerHTML = season.episodes.map((episode, index) => {
+  document.getElementById("episode-list").innerHTML = season.episodes.map(function(episode, index) {
     var _a2, _b2;
     const episodeFile = (_a2 = season.episodeFiles) == null ? void 0 : _a2[index];
     const number = (_b2 = episodeFile == null ? void 0 : episodeFile.number) != null ? _b2 : index + 1;
@@ -1838,7 +1996,9 @@ function openPlayer(id, episodeIndex = null, options = {}) {
   const shouldAutoplay = (_h = options.autoplay) != null ? _h : state.autoplay;
   if (shouldAutoplay) {
     const promise = videoPlayer.play();
-    if (promise) promise.catch(() => showToast("Clique em reproduzir para iniciar o v\xEDdeo", "success"));
+    if (promise) promise.catch(function() {
+      return showToast("Clique em reproduzir para iniciar o v\xEDdeo", "success");
+    });
   }
 }
 const BOOST_STEPS = [1, 1.5, 2, 3];
@@ -1870,9 +2030,9 @@ function applyAudioBoost(factor) {
   storage.set("nexa-audio-boost", factor);
   videoPlayer.src = factor > 1 ? `${base}${separator}boost=${factor}&start=${Math.floor(time)}` : base;
   videoPlayer.load();
-  const resume = () => {
+  const resume = function() {
     if (time > 1) videoPlayer.currentTime = time;
-    if (wasPlaying) videoPlayer.play().catch(() => {
+    if (wasPlaying) videoPlayer.play().catch(function() {
     });
   };
   videoPlayer.addEventListener("loadedmetadata", resume, { once: true });
@@ -1900,8 +2060,10 @@ function collectSubtitles() {
   const active = state.activeVideo;
   if (!active) return [];
   const list = [];
-  const add = (subtitle) => {
-    if (subtitle && !list.some((candidate) => candidate.id === subtitle.id)) list.push(subtitle);
+  const add = function(subtitle) {
+    if (subtitle && !list.some(function(candidate) {
+      return candidate.id === subtitle.id;
+    })) list.push(subtitle);
   };
   (active.item.subtitles || []).forEach(add);
   (((_a2 = active.episodeFile) == null ? void 0 : _a2.subtitles) || []).forEach(add);
@@ -1924,7 +2086,9 @@ function localSubtitleTarget() {
 function updateSubtitleActionButtons() {
   const target = localSubtitleTarget();
   subtitleSearchOpen.hidden = false;
-  const activeSubtitle = collectSubtitles().find((candidate) => candidate.id === activeSubtitleId);
+  const activeSubtitle = collectSubtitles().find(function(candidate) {
+    return candidate.id === activeSubtitleId;
+  });
   subtitleSaveHd.hidden = !(target && activeSubtitle && activeSubtitle.source === "local");
 }
 function resetSubtitles() {
@@ -1932,8 +2096,12 @@ function resetSubtitles() {
   subtitleButton.classList.remove("active");
   subtitleButton.setAttribute("aria-expanded", "false");
   activeSubtitleId = null;
-  [...videoPlayer.querySelectorAll("track")].forEach((track) => track.remove());
-  subtitleObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  [...videoPlayer.querySelectorAll("track")].forEach(function(track) {
+    return track.remove();
+  });
+  subtitleObjectUrls.forEach(function(url) {
+    return URL.revokeObjectURL(url);
+  });
   subtitleObjectUrls = [];
   subtitleMenuList.innerHTML = "";
 }
@@ -1944,7 +2112,7 @@ function renderSubtitleMenu() {
     <button class="subtitle-option ${offSelected ? "selected" : ""}" type="button" role="menuitemradio" aria-checked="${offSelected}" data-subtitle="">
       <span>Desligado</span>
     </button>
-    ${subtitles.map((subtitle) => {
+    ${subtitles.map(function(subtitle) {
     const selected = subtitle.id === activeSubtitleId;
     return `<button class="subtitle-option ${selected ? "selected" : ""}" type="button" role="menuitemradio" aria-checked="${selected}" data-subtitle="${subtitle.id}">
         <span>${escapeHtml(subtitle.label)}</span>
@@ -1975,7 +2143,9 @@ function disableSubtitles() {
 function activateSubtitle(id) {
   return __async(this, null, function* () {
     var _a2;
-    const subtitle = collectSubtitles().find((candidate) => candidate.id === id);
+    const subtitle = collectSubtitles().find(function(candidate) {
+      return candidate.id === id;
+    });
     if (!subtitle) return;
     try {
       const text = (_a2 = subtitle.text) != null ? _a2 : yield fetchSubtitleText(subtitle);
@@ -1983,7 +2153,9 @@ function activateSubtitle(id) {
       if (!vtt.trim()) throw new Error("Legenda vazia");
       const url = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
       subtitleObjectUrls.push(url);
-      [...videoPlayer.querySelectorAll("track")].forEach((track2) => track2.remove());
+      [...videoPlayer.querySelectorAll("track")].forEach(function(track2) {
+        return track2.remove();
+      });
       const track = document.createElement("track");
       track.kind = "subtitles";
       track.label = subtitle.label || "Legenda";
@@ -1991,7 +2163,7 @@ function activateSubtitle(id) {
       track.src = url;
       track.default = true;
       videoPlayer.append(track);
-      const showTrack = () => {
+      const showTrack = function() {
         const tracks = videoPlayer.textTracks;
         for (let index = 0; index < tracks.length; index += 1) tracks[index].mode = tracks[index] === tracks[tracks.length - 1] ? "showing" : "disabled";
       };
@@ -2018,10 +2190,14 @@ function fetchSubtitleText(subtitle) {
 }
 function readFileText(file) {
   if (typeof file.text === "function") return file.text();
-  return new Promise((resolve, reject) => {
+  return new Promise(function(resolve, reject) {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Falha ao ler o arquivo"));
+    reader.onload = function() {
+      return resolve(String(reader.result || ""));
+    };
+    reader.onerror = function() {
+      return reject(reader.error || new Error("Falha ao ler o arquivo"));
+    };
     reader.readAsText(file);
   });
 }
@@ -2060,7 +2236,7 @@ function toggleList(id, silent = false) {
   else state.list.delete(id);
   persistActiveProfile();
   document.getElementById("list-count").textContent = state.list.size;
-  document.querySelectorAll(`[data-action="toggle-list"][data-id="${id}"]`).forEach((button) => {
+  document.querySelectorAll(`[data-action="toggle-list"][data-id="${id}"]`).forEach(function(button) {
     button.classList.toggle("in-list", adding);
     button.innerHTML = adding ? icon("check") : icon("plus");
     button.setAttribute("aria-label", `${adding ? "Remover" : "Adicionar"} ${item.title} ${adding ? "da" : "\xE0"} lista`);
@@ -2111,13 +2287,15 @@ function showToast(message, type = "success") {
   toast.className = `toast ${type}`;
   toast.innerHTML = `${type === "error" ? icon("info") : icon("check")}<span>${escapeHtml(message)}</span>`;
   toastRegion.append(toast);
-  window.setTimeout(() => {
+  window.setTimeout(function() {
     toast.classList.add("hiding");
-    window.setTimeout(() => toast.remove(), 240);
+    window.setTimeout(function() {
+      return toast.remove();
+    }, 240);
   }, 3200);
 }
 function updateActiveNavigation() {
-  document.querySelectorAll("[data-view]").forEach((button) => {
+  document.querySelectorAll("[data-view]").forEach(function(button) {
     const active = button.dataset.view === state.view;
     button.classList.toggle("active", active);
     if (active) button.setAttribute("aria-current", "page");
@@ -2128,7 +2306,11 @@ function resetSearchFilters() {
   state.searchFilters = { type: "todos", genre: "Todos", year: "todos", rating: 0 };
 }
 function getSearchYears() {
-  return [...new Set(currentCatalog().map((item) => String(item.year)))].sort((a, b) => Number(b) - Number(a));
+  return [...new Set(currentCatalog().map(function(item) {
+    return String(item.year);
+  }))].sort(function(a, b) {
+    return Number(b) - Number(a);
+  });
 }
 function searchFiltersView() {
   const filters = state.searchFilters;
@@ -2138,12 +2320,20 @@ function searchFiltersView() {
   const genres = getGenres();
   const years = getSearchYears();
   const active = filters.type !== "todos" || filters.genre !== "Todos" || filters.year !== "todos" || Number(filters.rating) > 0;
-  const options = (values, selected) => values.map(([value, label]) => `<option value="${value}" ${String(selected) === String(value) ? "selected" : ""}>${label}</option>`).join("");
+  const options = function(values, selected) {
+    return values.map(function([value, label]) {
+      return `<option value="${value}" ${String(selected) === String(value) ? "selected" : ""}>${label}</option>`;
+    }).join("");
+  };
   return `
     <div class="search-filters" role="group" aria-label="Filtros da busca">
       <label class="search-filter"><span>Tipo</span><select class="sort-select" data-search-filter="type">${options(types, filters.type)}</select></label>
-      <label class="search-filter"><span>G\xEAnero</span><select class="sort-select" data-search-filter="genre">${options(genres.map((genre) => [genre, genre]), filters.genre)}</select></label>
-      <label class="search-filter"><span>Ano</span><select class="sort-select" data-search-filter="year">${options([["todos", "Qualquer ano"], ...years.map((year) => [year, year])], filters.year)}</select></label>
+      <label class="search-filter"><span>G\xEAnero</span><select class="sort-select" data-search-filter="genre">${options(genres.map(function(genre) {
+    return [genre, genre];
+  }), filters.genre)}</select></label>
+      <label class="search-filter"><span>Ano</span><select class="sort-select" data-search-filter="year">${options([["todos", "Qualquer ano"], ...years.map(function(year) {
+    return [year, year];
+  })], filters.year)}</select></label>
       <label class="search-filter"><span>Nota</span><select class="sort-select" data-search-filter="rating">${options(ratings, filters.rating)}</select></label>
       <label class="search-filter"><span>Ordenar</span><select class="sort-select" data-search-sort>${options(sorts, state.sort)}</select></label>
       <button class="filter-reset" type="button" data-search-reset ${active ? "" : "disabled"}>Limpar filtros</button>
@@ -2169,7 +2359,9 @@ function handleSearch(query) {
       <section class="section-view">
         <header class="section-header"><div><p class="eyebrow">Resultados</p><h1>${state.query ? `Busca por \u201C${escapeHtml(state.query)}\u201D` : "Busca"}</h1><p>${items.length} ${items.length === 1 ? "resultado encontrado" : "resultados encontrados"}.</p></div></header>
         ${searchFiltersView()}
-        ${items.length ? `<div class="media-grid">${items.map((item) => posterCard(item)).join("")}</div>` : `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon("search")}</span><h2>Nada encontrado</h2><p>Experimente outro t\xEDtulo, g\xEAnero ou pessoa do elenco.</p><button class="button button-red" type="button" data-search-reset>Limpar filtros</button></div></div>`}
+        ${items.length ? `<div class="media-grid">${items.map(function(item) {
+      return posterCard(item);
+    }).join("")}</div>` : `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon("search")}</span><h2>Nada encontrado</h2><p>Experimente outro t\xEDtulo, g\xEAnero ou pessoa do elenco.</p><button class="button button-red" type="button" data-search-reset>Limpar filtros</button></div></div>`}
       </section>`;
     window.scrollTo({ top: 0, behavior: "smooth" });
   } else if (state.view === "busca") {
@@ -2208,7 +2400,7 @@ function isItemInProgress(item) {
 function clearItemProgress(item) {
   if (!item) return;
   delete state.progress[item.id];
-  Object.keys(state.progress).forEach((key) => {
+  Object.keys(state.progress).forEach(function(key) {
     if (key.startsWith(progressKeyPrefix(item.id))) delete state.progress[key];
   });
 }
@@ -2276,7 +2468,7 @@ function setPlayerPlaying(playing) {
   document.getElementById("player-shell").classList.toggle("playing", playing);
 }
 function togglePlay() {
-  if (videoPlayer.paused) videoPlayer.play().catch(() => {
+  if (videoPlayer.paused) videoPlayer.play().catch(function() {
   });
   else videoPlayer.pause();
 }
@@ -2307,14 +2499,16 @@ function scheduleControlsHide() {
   const shell = document.getElementById("player-shell");
   clearTimeout(state.hideControlsTimer);
   shell.classList.remove("controls-hidden");
-  state.hideControlsTimer = window.setTimeout(() => {
+  state.hideControlsTimer = window.setTimeout(function() {
     if (!videoPlayer.paused && subtitleMenu.hidden) shell.classList.add("controls-hidden");
   }, 2800);
 }
-document.addEventListener("click", (event) => {
+document.addEventListener("click", function(event) {
   const albumTarget = event.target.closest("[data-album]");
   if (albumTarget) {
-    const album = state.musicAlbums.find((entry) => entry.id === albumTarget.dataset.album);
+    const album = state.musicAlbums.find(function(entry) {
+      return entry.id === albumTarget.dataset.album;
+    });
     if (album) {
       state.activeAlbum = album;
       renderAlbumView(album);
@@ -2339,7 +2533,7 @@ document.addEventListener("click", (event) => {
   }
   if (event.target.closest("[data-local-settings]")) {
     openSettings();
-    window.setTimeout(() => {
+    window.setTimeout(function() {
       var _a2, _b2;
       (_a2 = document.querySelector(".local-settings")) == null ? void 0 : _a2.scrollIntoView({ block: "start" });
       (_b2 = document.getElementById("local-root")) == null ? void 0 : _b2.focus({ preventScroll: true });
@@ -2375,7 +2569,7 @@ document.addEventListener("click", (event) => {
     browseView();
   }
 });
-document.addEventListener("keydown", (event) => {
+document.addEventListener("keydown", function(event) {
   const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
   if (!keys.includes(event.key)) return;
   const card = event.target.closest(".media-card");
@@ -2395,29 +2589,41 @@ document.addEventListener("keydown", (event) => {
   target == null ? void 0 : target.focus();
   target == null ? void 0 : target.scrollIntoView({ block: "nearest", inline: "center" });
 });
-document.getElementById("detail-play").addEventListener("click", (event) => openPlayer(event.currentTarget.dataset.id));
-document.getElementById("detail-list").addEventListener("click", (event) => toggleList(event.currentTarget.dataset.id));
-document.getElementById("detail-seen").addEventListener("click", (event) => toggleSeen(event.currentTarget.dataset.id));
-document.getElementById("detail-like").addEventListener("click", (event) => toggleLike(event.currentTarget.dataset.id));
-document.getElementById("detail-share").addEventListener("click", (event) => shareItem(event.currentTarget.dataset.id));
-document.getElementById("season-select").addEventListener("change", (event) => {
+document.getElementById("detail-play").addEventListener("click", function(event) {
+  return openPlayer(event.currentTarget.dataset.id);
+});
+document.getElementById("detail-list").addEventListener("click", function(event) {
+  return toggleList(event.currentTarget.dataset.id);
+});
+document.getElementById("detail-seen").addEventListener("click", function(event) {
+  return toggleSeen(event.currentTarget.dataset.id);
+});
+document.getElementById("detail-like").addEventListener("click", function(event) {
+  return toggleLike(event.currentTarget.dataset.id);
+});
+document.getElementById("detail-share").addEventListener("click", function(event) {
+  return shareItem(event.currentTarget.dataset.id);
+});
+document.getElementById("season-select").addEventListener("change", function(event) {
   state.activeSeason = Number(event.target.value);
   if (state.activeItem) renderEpisodes(state.activeItem, state.activeSeason);
 });
-document.querySelector("[data-close-dialog]").addEventListener("click", () => detailsDialog.close());
-detailsDialog.addEventListener("close", () => {
+document.querySelector("[data-close-dialog]").addEventListener("click", function() {
+  return detailsDialog.close();
+});
+detailsDialog.addEventListener("close", function() {
   document.body.classList.remove("modal-open");
   if (window.location.hash.startsWith("#/titulo/")) history.replaceState(null, "", window.location.pathname + window.location.search);
   if (!state.activeVideo && !playerDialog.open && !settingsDialog.open && !(shortcutsDialog == null ? void 0 : shortcutsDialog.open) && state.activeItem) focusCard(state.activeItem.id);
 });
-detailsDialog.addEventListener("click", (event) => {
+detailsDialog.addEventListener("click", function(event) {
   if (event.target === detailsDialog) detailsDialog.close();
 });
-playerDialog.addEventListener("cancel", (event) => {
+playerDialog.addEventListener("cancel", function(event) {
   event.preventDefault();
   closePlayer();
 });
-playerDialog.addEventListener("close", () => {
+playerDialog.addEventListener("close", function() {
   saveProgress();
   videoPlayer.pause();
   document.body.classList.remove("modal-open");
@@ -2430,8 +2636,12 @@ playerDialog.addEventListener("close", () => {
 document.getElementById("player-close").addEventListener("click", closePlayer);
 document.getElementById("player-play").addEventListener("click", togglePlay);
 document.getElementById("player-center-play").addEventListener("click", togglePlay);
-document.getElementById("player-back").addEventListener("click", () => skip(-10));
-document.getElementById("player-forward").addEventListener("click", () => skip(10));
+document.getElementById("player-back").addEventListener("click", function() {
+  return skip(-10);
+});
+document.getElementById("player-forward").addEventListener("click", function() {
+  return skip(10);
+});
 document.getElementById("player-mute").addEventListener("click", toggleMute);
 playerBoostButton.addEventListener("click", cycleAudioBoost);
 playerSpeedButton == null ? void 0 : playerSpeedButton.addEventListener("click", cyclePlaybackRate);
@@ -2439,33 +2649,39 @@ playerPipButton == null ? void 0 : playerPipButton.addEventListener("click", tog
 document.getElementById("player-fullscreen").addEventListener("click", toggleFullscreen);
 videoPlayer.addEventListener("enterpictureinpicture", updatePipButton);
 videoPlayer.addEventListener("leavepictureinpicture", updatePipButton);
-videoPlayer.addEventListener("loadedmetadata", () => {
+videoPlayer.addEventListener("loadedmetadata", function() {
   videoPlayer.playbackRate = state.playbackRate;
 });
-document.getElementById("player-progress").addEventListener("input", (event) => {
+document.getElementById("player-progress").addEventListener("input", function(event) {
   if (videoPlayer.duration) videoPlayer.currentTime = Number(event.target.value) / 100 * videoPlayer.duration;
 });
-document.getElementById("player-volume").addEventListener("input", (event) => {
+document.getElementById("player-volume").addEventListener("input", function(event) {
   videoPlayer.volume = Number(event.target.value);
   videoPlayer.muted = false;
 });
-document.getElementById("player-next").addEventListener("click", () => playNextEpisode());
-document.getElementById("player-quality").addEventListener("click", () => {
+document.getElementById("player-next").addEventListener("click", function() {
+  return playNextEpisode();
+});
+document.getElementById("player-quality").addEventListener("click", function() {
   setQuality(state.quality === "HD" ? "4K" : "HD");
   showToast(`Qualidade alterada para ${state.quality}`, "success");
 });
-subtitleButton.addEventListener("click", (event) => {
+subtitleButton.addEventListener("click", function(event) {
   event.stopPropagation();
   if (subtitleMenu.hidden) openSubtitleMenu();
   else closeSubtitleMenu();
 });
 document.getElementById("subtitle-close").addEventListener("click", closeSubtitleMenu);
-document.getElementById("subtitle-upload").addEventListener("click", () => subtitleFileInput.click());
+document.getElementById("subtitle-upload").addEventListener("click", function() {
+  return subtitleFileInput.click();
+});
 function saveActiveSubtitleToHd() {
   return __async(this, null, function* () {
     var _a2;
     const target = localSubtitleTarget();
-    const subtitle = collectSubtitles().find((candidate) => candidate.id === activeSubtitleId);
+    const subtitle = collectSubtitles().find(function(candidate) {
+      return candidate.id === activeSubtitleId;
+    });
     if (!target || !subtitle) {
       showToast("Carregue uma legenda antes de salvar no HD.", "error");
       return;
@@ -2477,7 +2693,9 @@ function saveActiveSubtitleToHd() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ root: target.rootKey, path: target.path, lang: subtitle.lang || "pt", content: text })
       });
-      const data = yield response.json().catch(() => ({}));
+      const data = yield response.json().catch(function() {
+        return {};
+      });
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       const saved = {
         id: `local-sub-${Date.now()}`,
@@ -2489,7 +2707,9 @@ function saveActiveSubtitleToHd() {
       };
       const owner = state.activeVideo.episodeFile || state.activeVideo.item;
       const list = owner.subtitles || (owner.subtitles = []);
-      if (!list.some((candidate) => candidate.url === saved.url)) list.push(saved);
+      if (!list.some(function(candidate) {
+        return candidate.url === saved.url;
+      })) list.push(saved);
       closeSubtitleMenu();
       renderSubtitleMenu();
       yield activateSubtitle(saved.id);
@@ -2500,7 +2720,7 @@ function saveActiveSubtitleToHd() {
   });
 }
 subtitleSaveHd.addEventListener("click", saveActiveSubtitleToHd);
-subtitleSearchOpen.addEventListener("click", () => {
+subtitleSearchOpen.addEventListener("click", function() {
   var _a2;
   const target = localSubtitleTarget();
   const item = (_a2 = state.activeVideo) == null ? void 0 : _a2.item;
@@ -2515,12 +2735,14 @@ subtitleSearchOpen.addEventListener("click", () => {
   document.getElementById("subtitle-search-hint").textContent = `${target ? `Buscando legendas para \u201C${title}\u201D. Escolha uma para baixar e salvar ao lado do filme no HD.` : `Buscando legendas para \u201C${title}\u201D. Escolha uma para usar agora (para salvar no HD, abra o filme do HD local).`} ${localServerHint()}`;
   if (!subtitleSearchDialog.open) subtitleSearchDialog.showModal();
   document.body.classList.add("modal-open");
-  window.setTimeout(() => subtitleSearchInput.focus(), 60);
+  window.setTimeout(function() {
+    return subtitleSearchInput.focus();
+  }, 60);
 });
 const omdbDialog = document.getElementById("omdb-dialog");
 const omdbResults = document.getElementById("omdb-results");
 const omdbQuery = document.getElementById("omdb-dialog-query");
-document.getElementById("detail-omdb").addEventListener("click", () => {
+document.getElementById("detail-omdb").addEventListener("click", function() {
   var _a2;
   const item = getItem((_a2 = state.activeItem) == null ? void 0 : _a2.id);
   if (!(item == null ? void 0 : item.local)) return;
@@ -2528,157 +2750,185 @@ document.getElementById("detail-omdb").addEventListener("click", () => {
   omdbResults.innerHTML = "";
   omdbDialog.showModal();
   document.body.classList.add("modal-open");
-  window.setTimeout(() => omdbQuery.focus(), 60);
+  window.setTimeout(function() {
+    return omdbQuery.focus();
+  }, 60);
 });
-document.getElementById("omdb-dialog-close").addEventListener("click", () => omdbDialog.close());
-omdbDialog.addEventListener("close", () => {
+document.getElementById("omdb-dialog-close").addEventListener("click", function() {
+  return omdbDialog.close();
+});
+omdbDialog.addEventListener("close", function() {
   document.body.classList.remove("modal-open");
 });
-document.getElementById("omdb-dialog-run").addEventListener("click", () => __async(null, null, function* () {
-  const title = omdbQuery.value.trim();
-  if (!title) return;
-  omdbResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OMDb...</li>';
-  try {
-    const response = yield fetch(localApi(`/api/local/omdb/candidates?title=${encodeURIComponent(title)}`), { cache: "no-store" });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    const candidates = Array.isArray(data.candidates) ? data.candidates : [];
-    if (!candidates.length) {
-      omdbResults.innerHTML = '<li class="subtitle-result-empty">Nada encontrado. Tente o t\xEDtulo original.</li>';
-      return;
-    }
-    omdbResults.innerHTML = candidates.map((candidate) => `
+document.getElementById("omdb-dialog-run").addEventListener("click", function() {
+  return __async(null, null, function* () {
+    const title = omdbQuery.value.trim();
+    if (!title) return;
+    omdbResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OMDb...</li>';
+    try {
+      const response = yield fetch(localApi(`/api/local/omdb/candidates?title=${encodeURIComponent(title)}`), { cache: "no-store" });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+      if (!candidates.length) {
+        omdbResults.innerHTML = '<li class="subtitle-result-empty">Nada encontrado. Tente o t\xEDtulo original.</li>';
+        return;
+      }
+      omdbResults.innerHTML = candidates.map(function(candidate) {
+        return `
       <li>
         <button type="button" data-omdb-choose="${candidate.imdbId}">
           <strong>${escapeHtml(candidate.title)}</strong>
           <small>${escapeHtml(candidate.year || "")}${candidate.type ? ` \u2022 ${candidate.type}` : ""}</small>
         </button>
-      </li>`).join("");
-  } catch (error) {
-    omdbResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(error.message || "Falha na busca.")}</li>`;
-  }
-}));
-omdbResults.addEventListener("click", (event) => __async(null, null, function* () {
-  var _a2;
-  const button = event.target.closest("[data-omdb-choose]");
-  if (!button) return;
-  const item = getItem((_a2 = state.activeItem) == null ? void 0 : _a2.id);
-  if (!(item == null ? void 0 : item.local)) return;
-  button.disabled = true;
-  try {
-    const response = yield fetch(localApi("/api/local/omdb/choose"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ root: item.rootKey, path: item.fileRel, imdbId: button.dataset.omdbChoose })
-    });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    yield loadLocalLibrary({ silent: true });
-    omdbDialog.close();
-    const updated = getItem(item.id);
-    if (updated) openDetails(updated.id);
-    showToast("Filme identificado. Metadados atualizados.", "success");
-  } catch (error) {
-    showToast(error.message || "N\xE3o foi poss\xEDvel salvar a escolha.", "error");
-    button.disabled = false;
-  }
-}));
-document.getElementById("subtitle-search-close").addEventListener("click", () => subtitleSearchDialog.close());
-subtitleSearchDialog.addEventListener("close", () => {
+      </li>`;
+      }).join("");
+    } catch (error) {
+      omdbResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(error.message || "Falha na busca.")}</li>`;
+    }
+  });
+});
+omdbResults.addEventListener("click", function(event) {
+  return __async(null, null, function* () {
+    var _a2;
+    const button = event.target.closest("[data-omdb-choose]");
+    if (!button) return;
+    const item = getItem((_a2 = state.activeItem) == null ? void 0 : _a2.id);
+    if (!(item == null ? void 0 : item.local)) return;
+    button.disabled = true;
+    try {
+      const response = yield fetch(localApi("/api/local/omdb/choose"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: item.rootKey, path: item.fileRel, imdbId: button.dataset.omdbChoose })
+      });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      yield loadLocalLibrary({ silent: true });
+      omdbDialog.close();
+      const updated = getItem(item.id);
+      if (updated) openDetails(updated.id);
+      showToast("Filme identificado. Metadados atualizados.", "success");
+    } catch (error) {
+      showToast(error.message || "N\xE3o foi poss\xEDvel salvar a escolha.", "error");
+      button.disabled = false;
+    }
+  });
+});
+document.getElementById("subtitle-search-close").addEventListener("click", function() {
+  return subtitleSearchDialog.close();
+});
+subtitleSearchDialog.addEventListener("close", function() {
   document.body.classList.remove("modal-open");
 });
-document.getElementById("subtitle-search-run").addEventListener("click", () => __async(null, null, function* () {
-  var _a2, _b2;
-  const target = localSubtitleTarget();
-  const title = subtitleSearchInput.value.trim();
-  if (!title) {
-    subtitleResults.innerHTML = '<li class="subtitle-result-empty">Digite o t\xEDtulo do filme.</li>';
-    return;
-  }
-  subtitleResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OpenSubtitles...</li>';
-  const params = new URLSearchParams({ title });
-  const year = (target == null ? void 0 : target.year) || ((_b2 = (_a2 = state.activeVideo) == null ? void 0 : _a2.item) == null ? void 0 : _b2.year);
-  if (year) params.set("year", String(year));
-  if (target == null ? void 0 : target.rootKey) params.set("root", target.rootKey);
-  if (target == null ? void 0 : target.path) params.set("path", target.path);
-  try {
-    const response = yield fetch(localApi(`/api/local/subtitle/search?${params.toString()}`), { cache: "no-store", signal: localFetchSignal() });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    const results = Array.isArray(data.results) ? data.results : [];
-    if (!results.length) {
-      subtitleResults.innerHTML = '<li class="subtitle-result-empty">Nenhuma legenda encontrada. Tente o t\xEDtulo original em ingl\xEAs.</li>';
+document.getElementById("subtitle-search-run").addEventListener("click", function() {
+  return __async(null, null, function* () {
+    var _a2, _b2;
+    const target = localSubtitleTarget();
+    const title = subtitleSearchInput.value.trim();
+    if (!title) {
+      subtitleResults.innerHTML = '<li class="subtitle-result-empty">Digite o t\xEDtulo do filme.</li>';
       return;
     }
-    subtitleResults.innerHTML = results.map((result) => `
+    subtitleResults.innerHTML = '<li class="subtitle-result-empty">Buscando no OpenSubtitles...</li>';
+    const params = new URLSearchParams({ title });
+    const year = (target == null ? void 0 : target.year) || ((_b2 = (_a2 = state.activeVideo) == null ? void 0 : _a2.item) == null ? void 0 : _b2.year);
+    if (year) params.set("year", String(year));
+    if (target == null ? void 0 : target.rootKey) params.set("root", target.rootKey);
+    if (target == null ? void 0 : target.path) params.set("path", target.path);
+    try {
+      const response = yield fetch(localApi(`/api/local/subtitle/search?${params.toString()}`), { cache: "no-store", signal: localFetchSignal() });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (!results.length) {
+        subtitleResults.innerHTML = '<li class="subtitle-result-empty">Nenhuma legenda encontrada. Tente o t\xEDtulo original em ingl\xEAs.</li>';
+        return;
+      }
+      subtitleResults.innerHTML = results.map(function(result) {
+        return `
       <li>
         <button type="button" data-subtitle-download="${result.id}" data-lang="${result.lang || "pt"}" data-link="${result.link || ""}" data-api="${result.api || ""}">
           <strong>${escapeHtml(result.name || "Legenda")}</strong>
           <small>${escapeHtml(result.fileName || "")}</small>
           <span class="subtitle-result-meta">${escapeHtml(result.lang || "pt")}${result.hearingImpaired ? " \u2022 SDH" : ""}${result.downloads ? ` \u2022 ${result.downloads} downloads` : ""}</span>
         </button>
-      </li>`).join("");
-  } catch (error) {
-    const message = error.name === "AbortError" ? "Tempo esgotado ao falar com o servidor local." : error.message || "Falha na busca.";
-    const base = escapeHtml(localServerBase());
-    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}<br>Abra o NEXA em <code>${base}</code> e rode <code>python3 local_server.py</code>.</li>`;
-    showToast(message, "error");
-  }
-}));
-subtitleResults.addEventListener("click", (event) => __async(null, null, function* () {
-  const button = event.target.closest("[data-subtitle-download]");
-  if (!button) return;
-  const target = localSubtitleTarget();
-  button.disabled = true;
-  try {
-    const response = yield fetch(localApi("/api/local/subtitle/download"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(__spreadValues({
-        subtitleId: button.dataset.subtitleDownload,
-        link: button.dataset.link || "",
-        api: button.dataset.api || "",
-        lang: button.dataset.lang || "pt"
-      }, target ? { root: target.rootKey, path: target.path } : {})),
-      signal: localFetchSignal()
-    });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    const subtitle = __spreadValues({
-      id: `local-sub-${Date.now()}`,
-      label: "Legenda (baixada)",
-      lang: button.dataset.lang || "pt",
-      source: data.saved ? "local-server" : "local",
-      name: data.name || "legenda"
-    }, data.saved ? { url: data.url } : { text: data.content });
-    if (data.saved) {
-      const owner = state.activeVideo.episodeFile || state.activeVideo.item;
-      const list = owner.subtitles || (owner.subtitles = []);
-      if (!list.some((candidate) => candidate.url === subtitle.url)) list.push(subtitle);
-    } else {
-      const key = currentPlaybackKey();
-      const stored = subtitleStore.get(key) || [];
-      stored.push(subtitle);
-      subtitleStore.set(key, stored);
+      </li>`;
+      }).join("");
+    } catch (error) {
+      const message = error.name === "AbortError" ? "Tempo esgotado ao falar com o servidor local." : error.message || "Falha na busca.";
+      const base = escapeHtml(localServerBase());
+      subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}<br>Abra o NEXA em <code>${base}</code> e rode <code>python3 local_server.py</code>.</li>`;
+      showToast(message, "error");
     }
-    subtitleSearchDialog.close();
-    renderSubtitleMenu();
-    yield activateSubtitle(subtitle.id);
-    showToast(data.saved ? `Legenda baixada e salva no HD: ${data.name}` : "Legenda baixada e aplicada.", "success");
-  } catch (error) {
-    const message = error.name === "AbortError" ? "Tempo esgotado ao baixar a legenda." : error.message || "N\xE3o foi poss\xEDvel baixar a legenda.";
-    subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}</li>`;
-    showToast(message, "error");
-    button.disabled = false;
-  }
-}));
-subtitleFileInput.addEventListener("change", () => {
+  });
+});
+subtitleResults.addEventListener("click", function(event) {
+  return __async(null, null, function* () {
+    const button = event.target.closest("[data-subtitle-download]");
+    if (!button) return;
+    const target = localSubtitleTarget();
+    button.disabled = true;
+    try {
+      const response = yield fetch(localApi("/api/local/subtitle/download"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(__spreadValues({
+          subtitleId: button.dataset.subtitleDownload,
+          link: button.dataset.link || "",
+          api: button.dataset.api || "",
+          lang: button.dataset.lang || "pt"
+        }, target ? { root: target.rootKey, path: target.path } : {})),
+        signal: localFetchSignal()
+      });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const subtitle = __spreadValues({
+        id: `local-sub-${Date.now()}`,
+        label: "Legenda (baixada)",
+        lang: button.dataset.lang || "pt",
+        source: data.saved ? "local-server" : "local",
+        name: data.name || "legenda"
+      }, data.saved ? { url: data.url } : { text: data.content });
+      if (data.saved) {
+        const owner = state.activeVideo.episodeFile || state.activeVideo.item;
+        const list = owner.subtitles || (owner.subtitles = []);
+        if (!list.some(function(candidate) {
+          return candidate.url === subtitle.url;
+        })) list.push(subtitle);
+      } else {
+        const key = currentPlaybackKey();
+        const stored = subtitleStore.get(key) || [];
+        stored.push(subtitle);
+        subtitleStore.set(key, stored);
+      }
+      subtitleSearchDialog.close();
+      renderSubtitleMenu();
+      yield activateSubtitle(subtitle.id);
+      showToast(data.saved ? `Legenda baixada e salva no HD: ${data.name}` : "Legenda baixada e aplicada.", "success");
+    } catch (error) {
+      const message = error.name === "AbortError" ? "Tempo esgotado ao baixar a legenda." : error.message || "N\xE3o foi poss\xEDvel baixar a legenda.";
+      subtitleResults.innerHTML = `<li class="subtitle-result-empty">${escapeHtml(message)}<br>${escapeHtml(localServerHint())}</li>`;
+      showToast(message, "error");
+      button.disabled = false;
+    }
+  });
+});
+subtitleFileInput.addEventListener("change", function() {
   var _a2;
   const file = (_a2 = subtitleFileInput.files) == null ? void 0 : _a2[0];
   subtitleFileInput.value = "";
   loadSubtitleFile(file);
 });
-subtitleMenuList.addEventListener("click", (event) => {
+subtitleMenuList.addEventListener("click", function(event) {
   const option = event.target.closest("[data-subtitle]");
   if (!option) return;
   const id = option.dataset.subtitle;
@@ -2689,12 +2939,12 @@ subtitleMenuList.addEventListener("click", (event) => {
     disableSubtitles();
   }
 });
-document.addEventListener("click", (event) => {
+document.addEventListener("click", function(event) {
   if (subtitleMenu.hidden) return;
   if (event.target.closest("#subtitle-menu") || event.target.closest("#player-subtitles")) return;
   closeSubtitleMenu();
 });
-videoPlayer.addEventListener("error", () => {
+videoPlayer.addEventListener("error", function() {
   var _a2, _b2, _c2, _d2;
   const active = state.activeVideo;
   if (!active) {
@@ -2712,7 +2962,7 @@ videoPlayer.addEventListener("error", () => {
     const start = (saved == null ? void 0 : saved.seconds) ? `&start=${Math.floor(saved.seconds)}` : "";
     videoPlayer.src = `${localTranscode}${start}`;
     videoPlayer.load();
-    if (state.autoplay) videoPlayer.play().catch(() => {
+    if (state.autoplay) videoPlayer.play().catch(function() {
     });
     showToast("Transcodificando o v\xEDdeo do HD...", "success");
     return;
@@ -2725,12 +2975,12 @@ videoPlayer.addEventListener("error", () => {
   active.fallbackTried = true;
   videoPlayer.src = driveDownloadUrl(fileId);
   videoPlayer.load();
-  if (state.autoplay) videoPlayer.play().catch(() => {
+  if (state.autoplay) videoPlayer.play().catch(function() {
   });
   showToast("Tentando um link alternativo do Drive...", "success");
 });
 let boostSeeking = false;
-videoPlayer.addEventListener("seeking", () => {
+videoPlayer.addEventListener("seeking", function() {
   if (boostSeeking || state.audioBoost <= 1) return;
   const active = state.activeVideo;
   const mediaUrl = localMediaUrl(active == null ? void 0 : active.item, active == null ? void 0 : active.episodeFile);
@@ -2739,17 +2989,21 @@ videoPlayer.addEventListener("seeking", () => {
   const base = mediaUrl.split("&boost=")[0].split("&start=")[0];
   videoPlayer.src = `${base}&boost=${state.audioBoost}&start=${Math.floor(videoPlayer.currentTime || 0)}`;
   videoPlayer.load();
-  const release = () => {
+  const release = function() {
     boostSeeking = false;
     videoPlayer.removeEventListener("seeked", release);
   };
   videoPlayer.addEventListener("seeked", release);
 });
-videoPlayer.addEventListener("play", () => setPlayerPlaying(true));
-videoPlayer.addEventListener("pause", () => setPlayerPlaying(false));
+videoPlayer.addEventListener("play", function() {
+  return setPlayerPlaying(true);
+});
+videoPlayer.addEventListener("pause", function() {
+  return setPlayerPlaying(false);
+});
 videoPlayer.addEventListener("timeupdate", updatePlayerProgress);
 videoPlayer.addEventListener("loadedmetadata", updatePlayerProgress);
-videoPlayer.addEventListener("ended", () => {
+videoPlayer.addEventListener("ended", function() {
   var _a2;
   saveProgress();
   const active = state.activeVideo;
@@ -2766,25 +3020,27 @@ videoPlayer.addEventListener("ended", () => {
   }
 });
 document.getElementById("player-shell").addEventListener("mousemove", scheduleControlsHide);
-document.getElementById("player-shell").addEventListener("mouseleave", () => {
+document.getElementById("player-shell").addEventListener("mouseleave", function() {
   if (!videoPlayer.paused && subtitleMenu.hidden) document.getElementById("player-shell").classList.add("controls-hidden");
 });
 musicAudio.addEventListener("ended", playNextTrack);
-musicAudio.addEventListener("error", () => {
+musicAudio.addEventListener("error", function() {
   if (musicAudio.getAttribute("src")) showToast("N\xE3o foi poss\xEDvel tocar esta m\xFAsica.", "error");
 });
 document.getElementById("music-close").addEventListener("click", stopMusic);
-searchInput.addEventListener("input", (event) => handleSearch(event.target.value));
-document.getElementById("search-form").addEventListener("submit", (event) => {
+searchInput.addEventListener("input", function(event) {
+  return handleSearch(event.target.value);
+});
+document.getElementById("search-form").addEventListener("submit", function(event) {
   event.preventDefault();
   handleSearch(searchInput.value);
 });
-document.getElementById("search-clear").addEventListener("click", () => {
+document.getElementById("search-clear").addEventListener("click", function() {
   searchInput.value = "";
   handleSearch("");
   searchInput.focus();
 });
-document.addEventListener("change", (event) => {
+document.addEventListener("change", function(event) {
   if (event.target.id === "sort-select") {
     state.sort = event.target.value;
     browseView();
@@ -2802,7 +3058,7 @@ document.addEventListener("change", (event) => {
     handleSearch(state.query);
   }
 });
-document.addEventListener("click", (event) => {
+document.addEventListener("click", function(event) {
   if (!event.target.closest("[data-search-reset]")) return;
   resetSearchFilters();
   if (state.query) handleSearch(state.query);
@@ -2816,7 +3072,7 @@ function isTopDialog(dialog) {
   const openDialogs = document.querySelectorAll("dialog[open]");
   return openDialogs[openDialogs.length - 1] === dialog;
 }
-document.addEventListener("keydown", (event) => {
+document.addEventListener("keydown", function(event) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openSearch();
@@ -2856,7 +3112,7 @@ function closeSidebar() {
   document.getElementById("sidebar-scrim").classList.remove("visible");
   document.getElementById("menu-button").setAttribute("aria-expanded", "false");
 }
-document.getElementById("menu-button").addEventListener("click", () => {
+document.getElementById("menu-button").addEventListener("click", function() {
   document.getElementById("sidebar").classList.add("open");
   document.getElementById("sidebar-scrim").classList.add("visible");
   document.getElementById("menu-button").setAttribute("aria-expanded", "true");
@@ -2892,14 +3148,22 @@ function openSettings() {
   settingsDialog.showModal();
   document.body.classList.add("modal-open");
 }
-themeToggle.addEventListener("click", () => setTheme(!document.body.classList.contains("light-theme")));
-document.getElementById("settings-theme").addEventListener("click", () => setTheme(!document.body.classList.contains("light-theme")));
-autoplaySwitch.addEventListener("click", () => setAutoplay(!state.autoplay));
-settingsQuality.addEventListener("change", () => setQuality(settingsQuality.value));
-document.getElementById("drive-nav").addEventListener("click", () => {
+themeToggle.addEventListener("click", function() {
+  return setTheme(!document.body.classList.contains("light-theme"));
+});
+document.getElementById("settings-theme").addEventListener("click", function() {
+  return setTheme(!document.body.classList.contains("light-theme"));
+});
+autoplaySwitch.addEventListener("click", function() {
+  return setAutoplay(!state.autoplay);
+});
+settingsQuality.addEventListener("change", function() {
+  return setQuality(settingsQuality.value);
+});
+document.getElementById("drive-nav").addEventListener("click", function() {
   closeSidebar();
   openSettings();
-  window.setTimeout(() => {
+  window.setTimeout(function() {
     var _a2, _b2;
     (_a2 = document.querySelector(".drive-settings")) == null ? void 0 : _a2.scrollIntoView({ block: "start" });
     (_b2 = document.getElementById("drive-folder")) == null ? void 0 : _b2.focus({ preventScroll: true });
@@ -2907,10 +3171,10 @@ document.getElementById("drive-nav").addEventListener("click", () => {
 });
 document.getElementById("drive-connect").addEventListener("click", connectDrive);
 document.getElementById("drive-disconnect").addEventListener("click", disconnectDrive);
-document.getElementById("local-nav").addEventListener("click", () => {
+document.getElementById("local-nav").addEventListener("click", function() {
   closeSidebar();
   openSettings();
-  window.setTimeout(() => {
+  window.setTimeout(function() {
     var _a2, _b2;
     (_a2 = document.querySelector(".local-settings")) == null ? void 0 : _a2.scrollIntoView({ block: "start" });
     (_b2 = document.getElementById("local-root")) == null ? void 0 : _b2.focus({ preventScroll: true });
@@ -2918,107 +3182,121 @@ document.getElementById("local-nav").addEventListener("click", () => {
 });
 document.getElementById("local-scan").addEventListener("click", scanLocalLibrary);
 (_a = document.getElementById("local-scan-full")) == null ? void 0 : _a.addEventListener("click", rescanLocalLibrary);
-document.getElementById("local-server").addEventListener("change", (event) => {
+document.getElementById("local-server").addEventListener("change", function(event) {
   const value = String(event.target.value || "").trim().replace(/\/+$/, "");
   if (value) storage.set("nexa-local-server", value);
   else storage.set("nexa-local-server", "");
   updateLocalSettingsUI();
   showToast(value ? `Servidor local: ${value}` : "Usando o endere\xE7o padr\xE3o do servidor local.", "success");
 });
-document.getElementById("omdb-settings-save").addEventListener("click", () => __async(null, null, function* () {
-  const status = document.getElementById("omdb-settings-status");
-  const payload = { omdbApiKey: document.getElementById("omdb-api-key").value.trim() };
-  status.textContent = "Salvando...";
-  try {
-    const response = yield fetch(localApi("/api/local/omdb/settings"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    status.textContent = data.hasOmdbKey ? "Chave salva no servidor local. Use \u201CAtualizar metadados\u201D para aplicar aos filmes." : "Chave removida.";
-    state.localConfig.hasOmdbKey = Boolean(data.hasOmdbKey);
-    updateLocalSettingsUI();
-    showToast("Chave do OMDb salva.", "success");
-  } catch (error) {
-    status.textContent = error.message || "N\xE3o foi poss\xEDvel salvar a chave.";
-  }
-}));
-document.getElementById("local-omdb-enrich").addEventListener("click", () => __async(null, null, function* () {
-  const button = document.getElementById("local-omdb-enrich");
-  button.disabled = true;
-  setLocalStatus("Atualizando metadados no OMDb...");
-  try {
-    const response = yield fetch(localApi("/api/local/omdb/enrich"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    showToast(`Metadados atualizados em ${data.updated || 0} filmes.`, "success");
-    yield loadLocalLibrary({ silent: true });
-  } catch (error) {
-    setLocalStatus(error.message || "Falha ao atualizar metadados.", "error");
-    showToast("N\xE3o foi poss\xEDvel atualizar os metadados.", "error");
-  } finally {
-    button.disabled = false;
-  }
-}));
-document.getElementById("subtitle-settings-save").addEventListener("click", () => __async(null, null, function* () {
-  const status = document.getElementById("subtitle-settings-status");
-  const payload = {
-    subtitleApiKey: document.getElementById("subtitle-api-key").value.trim(),
-    subtitleUser: document.getElementById("subtitle-user").value.trim(),
-    subtitlePassword: document.getElementById("subtitle-password").value
-  };
-  status.textContent = "Salvando...";
-  try {
-    const response = yield fetch(localApi("/api/local/subtitle/settings"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const data = yield response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    status.textContent = data.hasKey ? data.hasUser ? "Chave e login salvos no servidor local. A busca online usa a API nova (v1) do OpenSubtitles." : "Chave salva no servidor local. A busca online usa a API antiga; informe usu\xE1rio e senha para usar a API nova." : "Chave removida. A busca online precisa da chave da API.";
-    showToast("Credenciais de legendas salvas.", "success");
-  } catch (error) {
-    status.textContent = error.message || "N\xE3o foi poss\xEDvel salvar as chaves.";
-  }
-}));
+document.getElementById("omdb-settings-save").addEventListener("click", function() {
+  return __async(null, null, function* () {
+    const status = document.getElementById("omdb-settings-status");
+    const payload = { omdbApiKey: document.getElementById("omdb-api-key").value.trim() };
+    status.textContent = "Salvando...";
+    try {
+      const response = yield fetch(localApi("/api/local/omdb/settings"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      status.textContent = data.hasOmdbKey ? "Chave salva no servidor local. Use \u201CAtualizar metadados\u201D para aplicar aos filmes." : "Chave removida.";
+      state.localConfig.hasOmdbKey = Boolean(data.hasOmdbKey);
+      updateLocalSettingsUI();
+      showToast("Chave do OMDb salva.", "success");
+    } catch (error) {
+      status.textContent = error.message || "N\xE3o foi poss\xEDvel salvar a chave.";
+    }
+  });
+});
+document.getElementById("local-omdb-enrich").addEventListener("click", function() {
+  return __async(null, null, function* () {
+    const button = document.getElementById("local-omdb-enrich");
+    button.disabled = true;
+    setLocalStatus("Atualizando metadados no OMDb...");
+    try {
+      const response = yield fetch(localApi("/api/local/omdb/enrich"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      showToast(`Metadados atualizados em ${data.updated || 0} filmes.`, "success");
+      yield loadLocalLibrary({ silent: true });
+    } catch (error) {
+      setLocalStatus(error.message || "Falha ao atualizar metadados.", "error");
+      showToast("N\xE3o foi poss\xEDvel atualizar os metadados.", "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+});
+document.getElementById("subtitle-settings-save").addEventListener("click", function() {
+  return __async(null, null, function* () {
+    const status = document.getElementById("subtitle-settings-status");
+    const payload = {
+      subtitleApiKey: document.getElementById("subtitle-api-key").value.trim(),
+      subtitleUser: document.getElementById("subtitle-user").value.trim(),
+      subtitlePassword: document.getElementById("subtitle-password").value
+    };
+    status.textContent = "Salvando...";
+    try {
+      const response = yield fetch(localApi("/api/local/subtitle/settings"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = yield response.json().catch(function() {
+        return {};
+      });
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      status.textContent = data.hasKey ? data.hasUser ? "Chave e login salvos no servidor local. A busca online usa a API nova (v1) do OpenSubtitles." : "Chave salva no servidor local. A busca online usa a API antiga; informe usu\xE1rio e senha para usar a API nova." : "Chave removida. A busca online precisa da chave da API.";
+      showToast("Credenciais de legendas salvas.", "success");
+    } catch (error) {
+      status.textContent = error.message || "N\xE3o foi poss\xEDvel salvar as chaves.";
+    }
+  });
+});
 document.getElementById("local-clear").addEventListener("click", disconnectLocal);
-document.getElementById("local-root").addEventListener("keydown", (event) => {
+document.getElementById("local-root").addEventListener("keydown", function(event) {
   if (event.key !== "Enter") return;
   event.preventDefault();
   scanLocalLibrary();
 });
-["drive-folder", "drive-key"].forEach((id) => {
-  document.getElementById(id).addEventListener("keydown", (event) => {
+["drive-folder", "drive-key"].forEach(function(id) {
+  document.getElementById(id).addEventListener("keydown", function(event) {
     if (event.key !== "Enter") return;
     event.preventDefault();
     connectDrive();
   });
 });
-document.getElementById("settings-close").addEventListener("click", () => settingsDialog.close());
-settingsDialog.addEventListener("close", () => {
+document.getElementById("settings-close").addEventListener("click", function() {
+  return settingsDialog.close();
+});
+settingsDialog.addEventListener("close", function() {
   document.body.classList.remove("modal-open");
   document.getElementById("mini-profile-button").focus();
 });
-settingsDialog.addEventListener("click", (event) => {
+settingsDialog.addEventListener("click", function(event) {
   if (event.target === settingsDialog) settingsDialog.close();
 });
 (_b = document.getElementById("shortcuts-close")) == null ? void 0 : _b.addEventListener("click", closeShortcutsDialog);
-shortcutsDialog == null ? void 0 : shortcutsDialog.addEventListener("click", (event) => {
+shortcutsDialog == null ? void 0 : shortcutsDialog.addEventListener("click", function(event) {
   if (event.target === shortcutsDialog) closeShortcutsDialog();
 });
-shortcutsDialog == null ? void 0 : shortcutsDialog.addEventListener("close", () => {
+shortcutsDialog == null ? void 0 : shortcutsDialog.addEventListener("close", function() {
   if (!document.querySelector("dialog[open]")) document.body.classList.remove("modal-open");
 });
 const notificationButton = document.getElementById("notification-button");
 const notificationsPopover = document.getElementById("notifications-popover");
-notificationButton.addEventListener("click", (event) => {
+notificationButton.addEventListener("click", function(event) {
   event.stopPropagation();
   notificationsPopover.hidden = !notificationsPopover.hidden;
   profilePopover.hidden = true;
@@ -3027,11 +3305,13 @@ notificationButton.addEventListener("click", (event) => {
   document.getElementById("mini-profile-button").setAttribute("aria-expanded", "false");
 });
 function applyNotificationsRead(read) {
-  document.querySelectorAll("[data-notification]").forEach((item) => item.classList.toggle("read", read));
+  document.querySelectorAll("[data-notification]").forEach(function(item) {
+    return item.classList.toggle("read", read);
+  });
   const dot = document.querySelector(".notification-dot");
   if (dot) dot.style.display = read ? "none" : "";
 }
-document.getElementById("mark-read").addEventListener("click", () => {
+document.getElementById("mark-read").addEventListener("click", function() {
   applyNotificationsRead(true);
   storage.set("nexa-notifications-read", true);
   showToast("Notifica\xE7\xF5es marcadas como lidas", "success");
@@ -3065,7 +3345,7 @@ function profileMeta(profile) {
 function updateProfileUI() {
   const profile = activeProfile();
   if (!profile) return;
-  document.querySelectorAll('[data-view="musica"]').forEach((element) => {
+  document.querySelectorAll('[data-view="musica"]').forEach(function(element) {
     element.hidden = Boolean(profile.kids);
   });
   const initials = profileInitials(profile.name);
@@ -3084,7 +3364,7 @@ function updateProfileUI() {
 }
 function renderProfileSwitcher() {
   const list = document.getElementById("profile-switch-list");
-  list.innerHTML = profiles.map((profile) => {
+  list.innerHTML = profiles.map(function(profile) {
     const active = profile.id === activeProfileId;
     return `<button class="profile-switch-item ${active ? "active" : ""}" type="button" data-profile-switch="${profile.id}" aria-pressed="${active}">
       <span class="avatar small" style="background:${profile.color}">${profileInitials(profile.name)}</span>
@@ -3123,13 +3403,15 @@ function applyProfileSwitch(profile) {
   showToast(`Agora voc\xEA est\xE1 no perfil de ${profile.name}`, "success");
 }
 function switchProfile(id) {
-  const target = profiles.find((profile) => profile.id === id);
+  const target = profiles.find(function(profile) {
+    return profile.id === id;
+  });
   if (!target) return;
   profilePopover.hidden = true;
   if (target.id === activeProfileId) return;
   const current = activeProfile();
   if ((current == null ? void 0 : current.kids) && current.pin) {
-    requestPin("Digite o PIN do perfil infantil para trocar de perfil.", current.pin).then((ok) => {
+    requestPin("Digite o PIN do perfil infantil para trocar de perfil.", current.pin).then(function(ok) {
       if (ok) applyProfileSwitch(target);
     });
     return;
@@ -3137,7 +3419,7 @@ function switchProfile(id) {
   applyProfileSwitch(target);
 }
 function requestPin(message, expected) {
-  return new Promise((resolve) => {
+  return new Promise(function(resolve) {
     if (pinRequest) {
       pinRequest.resolve(false);
       pinRequest = null;
@@ -3148,7 +3430,9 @@ function requestPin(message, expected) {
     pinError.hidden = true;
     if (!pinDialog.open) pinDialog.showModal();
     document.body.classList.add("modal-open");
-    window.setTimeout(() => pinInput.focus(), 40);
+    window.setTimeout(function() {
+      return pinInput.focus();
+    }, 40);
   });
 }
 function finishPin(result) {
@@ -3159,7 +3443,7 @@ function finishPin(result) {
   document.body.classList.remove("modal-open");
   resolve(result);
 }
-pinForm.addEventListener("submit", (event) => {
+pinForm.addEventListener("submit", function(event) {
   event.preventDefault();
   const value = pinInput.value.trim();
   if (value && value === (pinRequest == null ? void 0 : pinRequest.expected)) {
@@ -3170,11 +3454,13 @@ pinForm.addEventListener("submit", (event) => {
     pinInput.focus();
   }
 });
-pinInput.addEventListener("input", () => {
+pinInput.addEventListener("input", function() {
   pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 4);
 });
-document.getElementById("pin-cancel").addEventListener("click", () => finishPin(false));
-pinDialog.addEventListener("close", () => {
+document.getElementById("pin-cancel").addEventListener("click", function() {
+  return finishPin(false);
+});
+pinDialog.addEventListener("close", function() {
   document.body.classList.remove("modal-open");
   if (pinRequest) {
     const { resolve } = pinRequest;
@@ -3198,7 +3484,7 @@ function resetProfileForm() {
   setProfileFormNote("");
 }
 function renderProfilesManager() {
-  profilesManagerList.innerHTML = profiles.map((profile) => {
+  profilesManagerList.innerHTML = profiles.map(function(profile) {
     const active = profile.id === activeProfileId;
     return `<div class="profile-manage-row ${active ? "active" : ""}">
       <span class="avatar" style="background:${profile.color}">${profileInitials(profile.name)}</span>
@@ -3217,12 +3503,14 @@ function showProfilesDialog() {
   renderProfilesManager();
   if (!profilesDialog.open) profilesDialog.showModal();
   document.body.classList.add("modal-open");
-  window.setTimeout(() => profileNameInput.focus(), 60);
+  window.setTimeout(function() {
+    return profileNameInput.focus();
+  }, 60);
 }
 function openProfilesDialog() {
   const current = activeProfile();
   if ((current == null ? void 0 : current.kids) && current.pin) {
-    requestPin("Digite o PIN para gerenciar os perfis.", current.pin).then((ok) => {
+    requestPin("Digite o PIN para gerenciar os perfis.", current.pin).then(function(ok) {
       if (ok) showProfilesDialog();
     });
     return;
@@ -3230,7 +3518,9 @@ function openProfilesDialog() {
   showProfilesDialog();
 }
 function editProfile(id) {
-  const profile = profiles.find((candidate) => candidate.id === id);
+  const profile = profiles.find(function(candidate) {
+    return candidate.id === id;
+  });
   if (!profile) return;
   editingProfileId = id;
   formKids = profile.kids;
@@ -3246,10 +3536,14 @@ function editProfile(id) {
 }
 function deleteProfile(id) {
   if (profiles.length <= 1) return;
-  const profile = profiles.find((candidate) => candidate.id === id);
+  const profile = profiles.find(function(candidate) {
+    return candidate.id === id;
+  });
   if (!profile) return;
   if (!window.confirm(`Excluir o perfil \u201C${profile.name}\u201D? Listas, curtidas e progresso ser\xE3o removidos.`)) return;
-  const index = profiles.findIndex((candidate) => candidate.id === id);
+  const index = profiles.findIndex(function(candidate) {
+    return candidate.id === id;
+  });
   profiles.splice(index, 1);
   if (activeProfileId === id) {
     activeProfileId = profiles[0].id;
@@ -3268,12 +3562,12 @@ function deleteProfile(id) {
   renderProfilesManager();
   showToast(`Perfil \u201C${profile.name}\u201D exclu\xEDdo`, "success");
 }
-profileKidsToggle.addEventListener("click", () => {
+profileKidsToggle.addEventListener("click", function() {
   formKids = !formKids;
   profileKidsToggle.setAttribute("aria-checked", String(formKids));
   if (!formKids) setProfileFormNote("");
 });
-profileForm.addEventListener("submit", (event) => {
+profileForm.addEventListener("submit", function(event) {
   event.preventDefault();
   const name = profileNameInput.value.trim();
   if (!name) {
@@ -3294,7 +3588,9 @@ profileForm.addEventListener("submit", (event) => {
   }
   const color = profileColorInput.value;
   if (editingProfileId) {
-    const profile = profiles.find((candidate) => candidate.id === editingProfileId);
+    const profile = profiles.find(function(candidate) {
+      return candidate.id === editingProfileId;
+    });
     if (!profile) return;
     profile.name = name.slice(0, 32);
     profile.kids = formKids;
@@ -3327,7 +3623,7 @@ profileForm.addEventListener("submit", (event) => {
   showToast(`Perfil de ${newProfile.name} criado`, "success");
 });
 profileCancelButton.addEventListener("click", resetProfileForm);
-profilesManagerList.addEventListener("click", (event) => {
+profilesManagerList.addEventListener("click", function(event) {
   const editButton = event.target.closest("[data-profile-edit]");
   if (editButton) {
     editProfile(editButton.dataset.profileEdit);
@@ -3336,16 +3632,18 @@ profilesManagerList.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("[data-profile-delete]");
   if (deleteButton) deleteProfile(deleteButton.dataset.profileDelete);
 });
-document.getElementById("profile-switch-list").addEventListener("click", (event) => {
+document.getElementById("profile-switch-list").addEventListener("click", function(event) {
   const button = event.target.closest("[data-profile-switch]");
   if (button) switchProfile(button.dataset.profileSwitch);
 });
 document.getElementById("profile-manage").addEventListener("click", openProfilesDialog);
-document.getElementById("profiles-close").addEventListener("click", () => profilesDialog.close());
-profilesDialog.addEventListener("click", (event) => {
+document.getElementById("profiles-close").addEventListener("click", function() {
+  return profilesDialog.close();
+});
+profilesDialog.addEventListener("click", function(event) {
   if (event.target === profilesDialog) profilesDialog.close();
 });
-profilesDialog.addEventListener("close", () => {
+profilesDialog.addEventListener("close", function() {
   document.body.classList.remove("modal-open");
   resetProfileForm();
 });
@@ -3357,20 +3655,20 @@ function toggleProfilePopover() {
   document.getElementById("profile-button").setAttribute("aria-expanded", expanded);
   notificationButton.setAttribute("aria-expanded", "false");
 }
-profileButton.addEventListener("click", (event) => {
+profileButton.addEventListener("click", function(event) {
   event.stopPropagation();
   toggleProfilePopover();
 });
-document.getElementById("profile-button").addEventListener("click", (event) => {
+document.getElementById("profile-button").addEventListener("click", function(event) {
   event.stopPropagation();
   toggleProfilePopover();
 });
 document.getElementById("profile-preferences").addEventListener("click", openSettings);
-document.getElementById("profile-logout").addEventListener("click", () => {
+document.getElementById("profile-logout").addEventListener("click", function() {
   profilePopover.hidden = true;
   showToast("Sess\xE3o encerrada. Este \xE9 um perfil de demonstra\xE7\xE3o.", "success");
 });
-document.addEventListener("click", (event) => {
+document.addEventListener("click", function(event) {
   if (!event.target.closest(".popover") && !event.target.closest("#notification-button") && !event.target.closest("#mini-profile-button") && !event.target.closest("#profile-button")) {
     notificationsPopover.hidden = true;
     profilePopover.hidden = true;
@@ -3379,13 +3677,13 @@ document.addEventListener("click", (event) => {
     document.getElementById("profile-button").setAttribute("aria-expanded", "false");
   }
 });
-document.addEventListener("error", (event) => {
+document.addEventListener("error", function(event) {
   const image = event.target;
   if (!(image instanceof HTMLImageElement) || image.dataset.fallback) return;
   image.dataset.fallback = "true";
   image.src = fallbackArtwork;
 }, true);
-window.addEventListener("scroll", () => {
+window.addEventListener("scroll", function() {
   const height = document.documentElement.scrollHeight - window.innerHeight;
   const percent = height > 0 ? window.scrollY / height * 100 : 0;
   document.getElementById("scroll-progress").style.width = `${percent}%`;
@@ -3394,39 +3692,45 @@ const installButton = document.getElementById("install-button");
 let deferredInstallPrompt = null;
 const isStandalone = ((_d = (_c = window.matchMedia) == null ? void 0 : _c.call(window, "(display-mode: standalone)")) == null ? void 0 : _d.matches) || window.navigator.standalone;
 if (isStandalone) installButton.hidden = true;
-window.addEventListener("beforeinstallprompt", (event) => {
+window.addEventListener("beforeinstallprompt", function(event) {
   event.preventDefault();
   deferredInstallPrompt = event;
   installButton.hidden = false;
 });
-installButton.addEventListener("click", () => __async(null, null, function* () {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  const choice = yield deferredInstallPrompt.userChoice;
-  if (choice.outcome === "accepted") installButton.hidden = true;
-  deferredInstallPrompt = null;
-}));
-window.addEventListener("appinstalled", () => {
+installButton.addEventListener("click", function() {
+  return __async(null, null, function* () {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const choice = yield deferredInstallPrompt.userChoice;
+    if (choice.outcome === "accepted") installButton.hidden = true;
+    deferredInstallPrompt = null;
+  });
+});
+window.addEventListener("appinstalled", function() {
   installButton.hidden = true;
   deferredInstallPrompt = null;
   showToast("NEXA instalado com sucesso!", "success");
 });
-window.addEventListener("offline", () => showToast("Voc\xEA est\xE1 offline. O conte\xFAdo em cache continua dispon\xEDvel.", "error"));
-window.addEventListener("online", () => showToast("Conex\xE3o restabelecida.", "success"));
+window.addEventListener("offline", function() {
+  return showToast("Voc\xEA est\xE1 offline. O conte\xFAdo em cache continua dispon\xEDvel.", "error");
+});
+window.addEventListener("online", function() {
+  return showToast("Conex\xE3o restabelecida.", "success");
+});
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator) || !/^https?:$/.test(window.location.protocol)) return;
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("service-worker.js", { updateViaCache: "none" }).then((registration) => {
-      registration.addEventListener("updatefound", () => {
+  window.addEventListener("load", function() {
+    navigator.serviceWorker.register("service-worker.js", { updateViaCache: "none" }).then(function(registration) {
+      registration.addEventListener("updatefound", function() {
         const worker = registration.installing;
         if (!worker) return;
-        worker.addEventListener("statechange", () => {
+        worker.addEventListener("statechange", function() {
           if (worker.state === "installed" && navigator.serviceWorker.controller) {
             showToast("Nova vers\xE3o dispon\xEDvel. Recarregue para atualizar.", "success");
           }
         });
       });
-    }).catch(() => {
+    }).catch(function() {
     });
   });
 }
@@ -3446,4 +3750,6 @@ if (deepLink) {
   const deepLinkItem = getItem(decodeURIComponent(deepLink[1]));
   if (deepLinkItem) openDetails(deepLinkItem.id);
 }
-window.setTimeout(() => document.getElementById("loading-screen").classList.add("hidden"), 650);
+window.setTimeout(function() {
+  return document.getElementById("loading-screen").classList.add("hidden");
+}, 650);
