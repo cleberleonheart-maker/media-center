@@ -2177,6 +2177,66 @@ function cycleAudioBoost() {
     var next = BOOST_STEPS[(index + 1) % BOOST_STEPS.length] || 1;
     applyAudioBoost(next);
 }
+var PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+function formatPlaybackRate(rate) {
+    var r = Number(rate) || 1;
+    var label = (Math.abs(r - 1) < 0.001) ? '1' : String(r);
+    return label + 'x';
+}
+function updateSpeedButton() {
+    if (!playerSpeedButton || !playerSpeedLabel)
+        return;
+    var rate = Number(state.playbackRate) || 1;
+    playerSpeedLabel.textContent = formatPlaybackRate(rate);
+    playerSpeedButton.classList.toggle('active', Math.abs(rate - 1) > 0.001);
+    playerSpeedButton.setAttribute('aria-label', 'Velocidade de reprodução (' + formatPlaybackRate(rate) + ')');
+    playerSpeedButton.setAttribute('title', 'Velocidade ' + formatPlaybackRate(rate));
+}
+function setPlaybackRate(rate) {
+    var r = Number(rate) || 1;
+    state.playbackRate = r;
+    if (videoPlayer)
+        videoPlayer.playbackRate = r;
+    storage.set('nexa-playback-rate', r);
+    updateSpeedButton();
+}
+function cyclePlaybackRate() {
+    var current = Number((videoPlayer && videoPlayer.playbackRate) || state.playbackRate || 1);
+    var idx = -1;
+    for (var i = 0; i < PLAYBACK_SPEEDS.length; i++) {
+        if (Math.abs(PLAYBACK_SPEEDS[i] - current) < 0.01) { idx = i; break; }
+    }
+    var next = PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length];
+    setPlaybackRate(next);
+    showToast('Velocidade: ' + formatPlaybackRate(next), 'success');
+}
+function updatePipButton() {
+    if (!playerPipButton)
+        return;
+    var supported = !!(document && document.pictureInPictureEnabled && videoPlayer && typeof videoPlayer.requestPictureInPicture === 'function');
+    playerPipButton.hidden = !supported;
+    var active = !!(document.pictureInPictureElement && document.pictureInPictureElement === videoPlayer);
+    playerPipButton.classList.toggle('active', active);
+    playerPipButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+function togglePictureInPicture() {
+    try {
+        if (document.pictureInPictureElement) {
+            var p = document.exitPictureInPicture && document.exitPictureInPicture();
+            if (p && p.catch) p.catch(function () { showToast('Não foi possível sair do Picture-in-Picture.', 'error'); });
+            return;
+        }
+        if (videoPlayer && typeof videoPlayer.requestPictureInPicture === 'function') {
+            var p2 = videoPlayer.requestPictureInPicture();
+            if (p2 && p2.catch) p2.catch(function () { showToast('Picture-in-Picture não disponível.', 'error'); });
+        } else {
+            showToast('Picture-in-Picture não suportado neste navegador.', 'error');
+        }
+    } catch (e) {
+        showToast('Picture-in-Picture não disponível.', 'error');
+    }
+}
+
 function closePlayer() {
     if (videoPlayer.paused === false)
         videoPlayer.pause();
