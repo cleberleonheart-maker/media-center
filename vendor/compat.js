@@ -1,5 +1,5 @@
 (function () {
-  // Basic ES5/ES6+ polyfills for older TV browsers
+  // ES5/ES6+ method polyfills for older TV browsers
   if (!Array.prototype.find) {
     Array.prototype.find = function (predicate) {
       if (this == null) throw new TypeError('Array.prototype.find called on null or undefined');
@@ -92,7 +92,7 @@
   if (!Array.from) {
     Array.from = function (arrayLike) {
       var arr = [];
-      for (var i = 0; i < arrayLike.length; i++) arr.push(arrayLike[i]);
+      if (arrayLike) for (var i = 0; i < arrayLike.length; i++) arr.push(arrayLike[i]);
       return arr;
     };
   }
@@ -156,9 +156,43 @@
   if (!Number.isFinite) { Number.isFinite = function (value) { return typeof value === 'number' && isFinite(value); }; }
   if (!Number.isNaN) { Number.isNaN = function (value) { return typeof value === 'number' && isNaN(value); }; }
   if (!Number.isInteger) { Number.isInteger = function (value) { return typeof value === 'number' && isFinite(value) && Math.floor(value) === value; }; }
-  if (!window.Promise) {
-    // minimal: avoid hard crash at parse-eval of libs expecting Promise; app may still be limited
+
+  // DOM polyfills
+  if (!Element.prototype.matches) {
+    Element.prototype.matches = Element.prototype.msMatchesSelector || Element.prototype.webkitMatchesSelector || function (s) {
+      var matches = (this.document || this.ownerDocument).querySelectorAll(s), i = matches.length;
+      while (--i >= 0 && matches.item(i) !== this) {}
+      return i > -1;
+    };
   }
+  if (!Element.prototype.closest) {
+    Element.prototype.closest = function (s) {
+      var el = this;
+      do { if (el.matches && el.matches(s)) return el; el = el.parentElement || el.parentNode; } while (el && el.nodeType === 1);
+      return null;
+    };
+  }
+  if (window.NodeList && !NodeList.prototype.forEach) { NodeList.prototype.forEach = Array.prototype.forEach; }
+  if (window.HTMLCollection && !HTMLCollection.prototype.forEach) { HTMLCollection.prototype.forEach = Array.prototype.forEach; }
+
+  // scroll behavior/position shims
+  if (typeof window.scrollY === 'undefined' && typeof window.pageYOffset !== 'undefined') {
+    try { Object.defineProperty(window, 'scrollY', { get: function () { return window.pageYOffset; } }); } catch (e) {}
+  }
+  if (typeof window.scrollX === 'undefined' && typeof window.pageXOffset !== 'undefined') {
+    try { Object.defineProperty(window, 'scrollX', { get: function () { return window.pageXOffset; } }); } catch (e) {}
+  }
+  try {
+    var origScrollTo = window.scrollTo;
+    window.scrollTo = function (x, y) {
+      if (x && typeof x === 'object') {
+        var top = x.top != null ? x.top : (x.y != null ? x.y : (window.pageYOffset || 0));
+        var left = x.left != null ? x.left : (x.x != null ? x.x : (window.pageXOffset || 0));
+        return origScrollTo.call(window, left, top);
+      }
+      return origScrollTo.call(window, x, y);
+    };
+  } catch (e) {}
 
   function registerDialogs() {
     if (typeof window !== 'undefined' && window.dialogPolyfill) {
@@ -177,7 +211,9 @@
   function hideLoader() {
     try {
       var el = document.getElementById('loading-screen');
-      if (el && !el.classList.contains('hidden')) el.classList.add('hidden');
+      if (el && el.className.indexOf('hidden') === -1) {
+        if (el.classList) el.classList.add('hidden'); else el.className += ' hidden';
+      }
     } catch (e) {}
   }
   window.addEventListener('load', function () { setTimeout(hideLoader, 4000); });

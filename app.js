@@ -45,6 +45,25 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __read = (this && this.__read) || function (o, n) {
+    var m = typeof Symbol === "function" && Symbol.iterator && o[Symbol.iterator];
+    var i;
+    if (m) i = m.call(o);
+    else if (o && typeof o.next === "function") i = o;
+    else return o;
+    var r, ar = [], e;
+    try {
+        while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+    }
+    catch (error) { e = { error: error }; }
+    finally {
+        try {
+            if (r && !r.done && i["return"]) i["return"]();
+        }
+        finally { if (e) throw e.error; }
+    }
+    return ar;
+};
 var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
         if (ar || !(i in from)) {
@@ -53,6 +72,18 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
         }
     }
     return to.concat(ar || Array.prototype.slice.call(from));
+};
+var __values = (this && this.__values) || function(o) {
+    var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+    if (m) return m.call(o);
+    if (o && typeof o.next === "function") return o;
+    if (o && typeof o.length === "number") return {
+        next: function () {
+            if (o && i >= o.length) o = void 0;
+            return { value: o && o[i++], done: !o };
+        }
+    };
+    throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
 };
 var _a, _b, _c, _d;
 var _this = this;
@@ -506,8 +537,8 @@ function persistActiveProfile() {
     var profile = activeProfile();
     if (!profile)
         return;
-    profile.list = __spreadArray([], state.list, true);
-    profile.liked = __spreadArray([], state.liked, true);
+    profile.list = __spreadArray([], __read(state.list), false);
+    profile.liked = __spreadArray([], __read(state.liked), false);
     profile.progress = __assign({}, state.progress);
     saveProfiles();
 }
@@ -734,21 +765,31 @@ function parseEpisodeInfo(name) {
     return { season: null, episode: null, explicit: false };
 }
 function parseLooseEpisodeNumber(name) {
+    var e_1, _a;
     var strict = parseEpisodeInfo(name);
     if (strict.episode !== null)
         return strict.episode;
     var text = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._]+/g, ' ');
     var matches = text.matchAll(/(?:^|[-–—\s(])(\d{1,3})(?=\s|[-–—.)\]]|$)/g);
-    for (var _i = 0, matches_1 = matches; _i < matches_1.length; _i++) {
-        var match = matches_1[_i];
-        var number = Number(match[1]);
-        if (number < 1)
-            continue;
-        if (number >= 1900 && number <= 2099)
-            continue;
-        if ([264, 265, 480, 576, 720, 1080, 2160].includes(number))
-            continue;
-        return number;
+    try {
+        for (var matches_1 = __values(matches), matches_1_1 = matches_1.next(); !matches_1_1.done; matches_1_1 = matches_1.next()) {
+            var match = matches_1_1.value;
+            var number = Number(match[1]);
+            if (number < 1)
+                continue;
+            if (number >= 1900 && number <= 2099)
+                continue;
+            if ([264, 265, 480, 576, 720, 1080, 2160].includes(number))
+                continue;
+            return number;
+        }
+    }
+    catch (e_1_1) { e_1 = { error: e_1_1 }; }
+    finally {
+        try {
+            if (matches_1_1 && !matches_1_1.done && (_a = matches_1.return)) _a.call(matches_1);
+        }
+        finally { if (e_1) throw e_1.error; }
     }
     return null;
 }
@@ -819,7 +860,7 @@ function buildDriveCatalog(files, rootName, apiKey) {
                 seasonFolderIndex = index;
         });
         var episodeInfo = parseEpisodeInfo(file.name);
-        var pathText = __spreadArray(__spreadArray([], names, true), [file.name], false).join('/');
+        var pathText = __spreadArray(__spreadArray([], __read(names), false), [file.name], false).join('/');
         var isSeries = rootIsSeries || DRIVE_SERIES_HINT.test(pathText) || seasonFolderIndex >= 0 || episodeInfo.explicit;
         if (!isSeries) {
             var parent_1 = ancestors[ancestors.length - 1] || null;
@@ -885,16 +926,16 @@ function buildDriveCatalog(files, rootName, apiKey) {
             entry.seasons.set(seasonNumber, []);
         entry.seasons.get(seasonNumber).push({ file: file, episodeNumber: episodeNumber, title: null });
     });
-    var seriesItems = __spreadArray([], seriesMap.values(), true).map(function (entry) {
+    var seriesItems = __spreadArray([], __read(seriesMap.values()), false).map(function (entry) {
         var _a, _b, _c;
-        var seasons = __spreadArray([], entry.seasons.entries(), true).sort(function (_a, _b) {
-            var a = _a[0];
-            var b = _b[0];
+        var seasons = __spreadArray([], __read(entry.seasons.entries()), false).sort(function (_a, _b) {
+            var _c = __read(_a, 1), a = _c[0];
+            var _d = __read(_b, 1), b = _d[0];
             return a - b;
         })
             .map(function (_a) {
-            var seasonNumber = _a[0], rawEpisodes = _a[1];
-            var episodes = __spreadArray([], rawEpisodes, true).sort(function (a, b) {
+            var _b = __read(_a, 2), seasonNumber = _b[0], rawEpisodes = _b[1];
+            var episodes = __spreadArray([], __read(rawEpisodes), false).sort(function (a, b) {
                 if (a.episodeNumber == null && b.episodeNumber == null)
                     return a.file.name.localeCompare(b.file.name, 'pt-BR');
                 if (a.episodeNumber == null)
@@ -961,7 +1002,7 @@ function buildDriveCatalog(files, rootName, apiKey) {
             new: true
         };
     });
-    return __spreadArray(__spreadArray([], seriesItems, true), movieItems, true);
+    return __spreadArray(__spreadArray([], __read(seriesItems), false), __read(movieItems), false);
 }
 function listDriveFolder(folderId, apiKey) {
     var _a;
@@ -997,7 +1038,7 @@ function listDriveFolder(folderId, apiKey) {
                 case 4: return [4 /*yield*/, response.json()];
                 case 5:
                     data = _b.sent();
-                    files.push.apply(files, (data.files || []));
+                    files.push.apply(files, __spreadArray([], __read((data.files || [])), false));
                     pageToken = data.nextPageToken || null;
                     _b.label = 6;
                 case 6:
@@ -1036,41 +1077,56 @@ function getDriveFolderMeta(folderId, apiKey) {
 }
 function walkDriveFolder(folderId, ancestors, account, config) {
     return __awaiter(this, void 0, void 0, function () {
-        var children, _i, children_1, child;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
+        var children, children_1, children_1_1, child, e_2_1;
+        var e_2, _a;
+        return __generator(this, function (_b) {
+            switch (_b.label) {
                 case 0:
                     if (account.folders >= 120 || account.files.length >= 2000)
                         return [2 /*return*/];
                     return [4 /*yield*/, listDriveFolder(folderId, config.apiKey)];
                 case 1:
-                    children = _a.sent();
-                    _i = 0, children_1 = children;
-                    _a.label = 2;
+                    children = _b.sent();
+                    _b.label = 2;
                 case 2:
-                    if (!(_i < children_1.length)) return [3 /*break*/, 6];
-                    child = children_1[_i];
-                    if (!isDriveFolder(child)) return [3 /*break*/, 4];
-                    if (account.folders >= 120)
-                        return [3 /*break*/, 5];
-                    account.folders += 1;
-                    return [4 /*yield*/, walkDriveFolder(child.id, __spreadArray(__spreadArray([], ancestors, true), [{ id: child.id, name: child.name }], false), account, config)];
+                    _b.trys.push([2, 8, 9, 10]);
+                    children_1 = __values(children), children_1_1 = children_1.next();
+                    _b.label = 3;
                 case 3:
-                    _a.sent();
-                    if (account.files.length >= 2000)
+                    if (!!children_1_1.done) return [3 /*break*/, 7];
+                    child = children_1_1.value;
+                    if (!isDriveFolder(child)) return [3 /*break*/, 5];
+                    if (account.folders >= 120)
                         return [3 /*break*/, 6];
-                    return [3 /*break*/, 5];
+                    account.folders += 1;
+                    return [4 /*yield*/, walkDriveFolder(child.id, __spreadArray(__spreadArray([], __read(ancestors), false), [{ id: child.id, name: child.name }], false), account, config)];
                 case 4:
+                    _b.sent();
+                    if (account.files.length >= 2000)
+                        return [3 /*break*/, 7];
+                    return [3 /*break*/, 6];
+                case 5:
                     if (isDriveVideo(child) || isDriveImage(child) || isDriveSubtitle(child)) {
                         account.files.push(__assign(__assign({}, child), { ancestors: ancestors }));
                         if (account.files.length >= 2000)
-                            return [3 /*break*/, 6];
+                            return [3 /*break*/, 7];
                     }
-                    _a.label = 5;
-                case 5:
-                    _i++;
-                    return [3 /*break*/, 2];
-                case 6: return [2 /*return*/];
+                    _b.label = 6;
+                case 6:
+                    children_1_1 = children_1.next();
+                    return [3 /*break*/, 3];
+                case 7: return [3 /*break*/, 10];
+                case 8:
+                    e_2_1 = _b.sent();
+                    e_2 = { error: e_2_1 };
+                    return [3 /*break*/, 10];
+                case 9:
+                    try {
+                        if (children_1_1 && !children_1_1.done && (_a = children_1.return)) _a.call(children_1);
+                    }
+                    finally { if (e_2) throw e_2.error; }
+                    return [7 /*endfinally*/];
+                case 10: return [2 /*return*/];
             }
         });
     });
@@ -1110,7 +1166,7 @@ function applyDriveItems(items) {
         if (catalog[index].drive)
             catalog.splice(index, 1);
     }
-    catalog.push.apply(catalog, items);
+    catalog.push.apply(catalog, __spreadArray([], __read(items), false));
     updateDriveNavCount();
 }
 function updateDriveSettingsUI() {
@@ -1335,7 +1391,7 @@ function applyLocalItems(items) {
         if (catalog[index].local)
             catalog.splice(index, 1);
     }
-    catalog.push.apply(catalog, items.map(localizeItem));
+    catalog.push.apply(catalog, __spreadArray([], __read(items.map(localizeItem)), false));
     updateLocalNavCount();
 }
 function updateLocalSettingsUI() {
@@ -1653,7 +1709,7 @@ function getItem(id) {
     return catalog.find(function (item) { return item.id === id; });
 }
 function getGenres() {
-    return __spreadArray(['Todos'], new Set(currentCatalog().flatMap(function (item) { return item.genres; })), true);
+    return __spreadArray(['Todos'], __read(new Set(currentCatalog().flatMap(function (item) { return item.genres; }))), false);
 }
 function numericValue(value, fallback) {
     if (fallback === void 0) { fallback = -1; }
@@ -1661,7 +1717,7 @@ function numericValue(value, fallback) {
     return Number.isFinite(number) ? number : fallback;
 }
 function sortItems(items) {
-    var sorted = __spreadArray([], items, true);
+    var sorted = __spreadArray([], __read(items), false);
     if (state.sort === 'relevancia')
         return sorted;
     if (state.sort === 'recentes')
@@ -1674,7 +1730,7 @@ function sortItems(items) {
 }
 function filteredCatalog(view) {
     if (view === void 0) { view = state.view; }
-    var items = __spreadArray([], currentCatalog(), true);
+    var items = __spreadArray([], __read(currentCatalog()), false);
     if (view === 'filmes')
         items = items.filter(function (item) { return item.type === 'filme'; });
     if (view === 'series')
@@ -1835,7 +1891,7 @@ function browseEmptyState() {
         novidades: ['Nada novo por enquanto', 'Volte em breve para conferir as novidades.', 'plus'],
         lista: ['Sua lista está vazia', 'Adicione filmes e séries usando o botão <strong>+</strong> nos cards. Eles ficarão salvos neste navegador.', 'bookmark']
     };
-    var _a = copy[state.view] || ['Nada encontrado', 'Tente ajustar seus filtros.', 'search'], title = _a[0], text = _a[1], iconName = _a[2];
+    var _a = __read(copy[state.view] || ['Nada encontrado', 'Tente ajustar seus filtros.', 'search'], 3), title = _a[0], text = _a[1], iconName = _a[2];
     return "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon(iconName), "</span><h2>").concat(title, "</h2><p>").concat(text, "</p><button class=\"button button-red\" type=\"button\" data-view-link=\"home\">Descobrir t\u00EDtulos</button></div></div>");
 }
 function browseView() {
@@ -1847,7 +1903,7 @@ function browseView() {
         novidades: ['Novidades', 'Acabaram de chegar. Não perca nenhuma.'],
         lista: ['Minha lista', 'Tudo o que você guardou para assistir depois.']
     };
-    var _a = titles[state.view] || ['Catálogo', 'Encontre sua próxima história.'], title = _a[0], subtitle = _a[1];
+    var _a = __read(titles[state.view] || ['Catálogo', 'Encontre sua próxima história.'], 2), title = _a[0], subtitle = _a[1];
     var chips = getGenres().map(function (genre) { return "<button class=\"filter-chip ".concat(state.genre === genre ? 'active' : '', "\" type=\"button\" data-genre=\"").concat(genre, "\">").concat(genre, "</button>"); }).join('');
     var content = items.length
         ? "<div class=\"media-grid\">".concat(items.map(function (item) { return posterCard(item); }).join(''), "</div>")
@@ -2175,7 +2231,7 @@ function resetSubtitles() {
     subtitleButton.classList.remove('active');
     subtitleButton.setAttribute('aria-expanded', 'false');
     activeSubtitleId = null;
-    __spreadArray([], videoPlayer.querySelectorAll('track'), true).forEach(function (track) { return track.remove(); });
+    __spreadArray([], __read(videoPlayer.querySelectorAll('track')), false).forEach(function (track) { return track.remove(); });
     subtitleObjectUrls.forEach(function (url) { return URL.revokeObjectURL(url); });
     subtitleObjectUrls = [];
     subtitleMenuList.innerHTML = '';
@@ -2237,7 +2293,7 @@ function activateSubtitle(id) {
                         throw new Error('Legenda vazia');
                     url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
                     subtitleObjectUrls.push(url);
-                    __spreadArray([], videoPlayer.querySelectorAll('track'), true).forEach(function (track) { return track.remove(); });
+                    __spreadArray([], __read(videoPlayer.querySelectorAll('track')), false).forEach(function (track) { return track.remove(); });
                     track = document.createElement('track');
                     track.kind = 'subtitles';
                     track.label = subtitle.label || 'Legenda';
@@ -2447,7 +2503,7 @@ function resetSearchFilters() {
     state.searchFilters = { type: 'todos', genre: 'Todos', year: 'todos', rating: 0 };
 }
 function getSearchYears() {
-    return __spreadArray([], new Set(currentCatalog().map(function (item) { return String(item.year); })), true).sort(function (a, b) { return Number(b) - Number(a); });
+    return __spreadArray([], __read(new Set(currentCatalog().map(function (item) { return String(item.year); }))), false).sort(function (a, b) { return Number(b) - Number(a); });
 }
 function searchFiltersView() {
     var filters = state.searchFilters;
@@ -2458,10 +2514,10 @@ function searchFiltersView() {
     var years = getSearchYears();
     var active = filters.type !== 'todos' || filters.genre !== 'Todos' || filters.year !== 'todos' || Number(filters.rating) > 0;
     var options = function (values, selected) { return values.map(function (_a) {
-        var value = _a[0], label = _a[1];
+        var _b = __read(_a, 2), value = _b[0], label = _b[1];
         return "<option value=\"".concat(value, "\" ").concat(String(selected) === String(value) ? 'selected' : '', ">").concat(label, "</option>");
     }).join(''); };
-    return "\n    <div class=\"search-filters\" role=\"group\" aria-label=\"Filtros da busca\">\n      <label class=\"search-filter\"><span>Tipo</span><select class=\"sort-select\" data-search-filter=\"type\">".concat(options(types, filters.type), "</select></label>\n      <label class=\"search-filter\"><span>G\u00EAnero</span><select class=\"sort-select\" data-search-filter=\"genre\">").concat(options(genres.map(function (genre) { return [genre, genre]; }), filters.genre), "</select></label>\n      <label class=\"search-filter\"><span>Ano</span><select class=\"sort-select\" data-search-filter=\"year\">").concat(options(__spreadArray([['todos', 'Qualquer ano']], years.map(function (year) { return [year, year]; }), true), filters.year), "</select></label>\n      <label class=\"search-filter\"><span>Nota</span><select class=\"sort-select\" data-search-filter=\"rating\">").concat(options(ratings, filters.rating), "</select></label>\n      <label class=\"search-filter\"><span>Ordenar</span><select class=\"sort-select\" data-search-sort>").concat(options(sorts, state.sort), "</select></label>\n      <button class=\"filter-reset\" type=\"button\" data-search-reset ").concat(active ? '' : 'disabled', ">Limpar filtros</button>\n    </div>");
+    return "\n    <div class=\"search-filters\" role=\"group\" aria-label=\"Filtros da busca\">\n      <label class=\"search-filter\"><span>Tipo</span><select class=\"sort-select\" data-search-filter=\"type\">".concat(options(types, filters.type), "</select></label>\n      <label class=\"search-filter\"><span>G\u00EAnero</span><select class=\"sort-select\" data-search-filter=\"genre\">").concat(options(genres.map(function (genre) { return [genre, genre]; }), filters.genre), "</select></label>\n      <label class=\"search-filter\"><span>Ano</span><select class=\"sort-select\" data-search-filter=\"year\">").concat(options(__spreadArray([['todos', 'Qualquer ano']], __read(years.map(function (year) { return [year, year]; })), false), filters.year), "</select></label>\n      <label class=\"search-filter\"><span>Nota</span><select class=\"sort-select\" data-search-filter=\"rating\">").concat(options(ratings, filters.rating), "</select></label>\n      <label class=\"search-filter\"><span>Ordenar</span><select class=\"sort-select\" data-search-sort>").concat(options(sorts, state.sort), "</select></label>\n      <button class=\"filter-reset\" type=\"button\" data-search-reset ").concat(active ? '' : 'disabled', ">Limpar filtros</button>\n    </div>");
 }
 function openSearch() {
     searchInput.focus();
@@ -2712,7 +2768,7 @@ document.addEventListener('keydown', function (event) {
     var row = card === null || card === void 0 ? void 0 : card.closest('.media-row');
     if (!card || !row)
         return;
-    var cards = __spreadArray([], row.querySelectorAll('.media-card'), true);
+    var cards = __spreadArray([], __read(row.querySelectorAll('.media-card')), false);
     var index = cards.indexOf(card);
     if (index === -1)
         return;
