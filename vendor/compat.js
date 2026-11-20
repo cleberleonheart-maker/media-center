@@ -175,12 +175,96 @@
   if (window.NodeList && !NodeList.prototype.forEach) { NodeList.prototype.forEach = Array.prototype.forEach; }
   if (window.HTMLCollection && !HTMLCollection.prototype.forEach) { HTMLCollection.prototype.forEach = Array.prototype.forEach; }
 
-  // scroll behavior/position shims
+  // classList polyfill (basic, including toggle force)
+  if (!('classList' in document.createElement('_'))) {
+    (function (view) {
+      if (!('Element' in view)) return;
+      var classListProp = 'classList', protoProp = 'prototype', elemCtrProto = view.Element[protoProp];
+      var objCtr = Object;
+      var strTrim = String[protoProp].trim || function () { return this.replace(/^\s+|\s+$/g, ''); };
+      var arrIndexOf = Array[protoProp].indexOf || function (item) { for (var i = 0, len = this.length; i < len; i++) { if (i in this && this[i] === item) return i; } return -1; };
+      var DOMTokenList = function (el) {
+        this.el = el;
+        var classes = strTrim.call(el.getAttribute('class') || '').split(/\s+/);
+        for (var i = 0; i < classes.length; i++) { if (classes[i]) this.push(classes[i]); }
+        this._updateClassName = function () { el.setAttribute('class', this.toString()); };
+      };
+      var tokenProto = DOMTokenList[protoProp] = [];
+      var checkTokenAndGetIndex = function (token) {
+        if (token === '') throw 'SyntaxError';
+        if (/\s/.test(token)) throw 'InvalidCharacterError';
+        return arrIndexOf.call(this, token);
+      };
+      tokenProto.item = function (i) { return this[i] || null; };
+      tokenProto.contains = function (token) { return checkTokenAndGetIndex.call(this, token += '') !== -1; };
+      tokenProto.add = function () {
+        var tokens = arguments, i = 0, l = tokens.length, token, updated = false;
+        do { token = tokens[i] + ''; if (checkTokenAndGetIndex.call(this, token) === -1) { this.push(token); updated = true; } } while (++i < l);
+        if (updated) this._updateClassName();
+      };
+      tokenProto.remove = function () {
+        var tokens = arguments, i = 0, l = tokens.length, token, updated = false, index;
+        do { token = tokens[i] + ''; index = checkTokenAndGetIndex.call(this, token); while (index !== -1) { this.splice(index, 1); updated = true; index = checkTokenAndGetIndex.call(this, token); } } while (++i < l);
+        if (updated) this._updateClassName();
+      };
+      tokenProto.toggle = function (token, force) {
+        token += '';
+        var result = this.contains(token), method = result ? (force !== true && 'remove') : (force !== false && 'add');
+        if (method) this[method](token);
+        if (force === true || force === false) return force;
+        return !result;
+      };
+      tokenProto.toString = function () { return this.join(' '); };
+      if (objCtr.defineProperty) {
+        try { objCtr.defineProperty(elemCtrProto, classListProp, { get: function () { return new DOMTokenList(this); } }); } catch (e) {}
+      } else if (objCtr[protoProp].__defineGetter__) {
+        elemCtrProto.__defineGetter__(classListProp, function () { return new DOMTokenList(this); });
+      }
+    })(window);
+  } else {
+    // Some older browsers have classList but no toggle(force) or no multiple-arg add/remove
+    try {
+      var testEl = document.createElement('_');
+      testEl.classList.toggle('t', false);
+      if (testEl.classList.contains('t')) throw 1;
+      testEl.classList.add('a', 'b');
+    } catch (e) {
+      // leave it; app rarely needs multi-arg
+    }
+  }
+
+  // dataset polyfill
+  if (!document.documentElement.dataset) {
+    var toCamel = function (str) { return str.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); }); };
+    Object.defineProperty(Element.prototype, 'dataset', {
+      get: function () {
+        var element = this;
+        var attributes = this.attributes;
+        var map = {};
+        for (var i = 0; i < attributes.length; i++) {
+          var attr = attributes[i];
+          if (attr && attr.name && attr.name.indexOf('data-') === 0) {
+            var name = toCamel(attr.name.slice(5));
+            (function (attrName) {
+              Object.defineProperty(map, name, {
+                enumerable: true,
+                get: function () { return element.getAttribute(attrName); },
+                set: function (val) { if (val === undefined) element.removeAttribute(attrName); else element.setAttribute(attrName, String(val)); }
+              });
+            })(attr.name);
+          }
+        }
+        return map;
+      }
+    });
+  }
+
+  // scroll shims
   if (typeof window.scrollY === 'undefined' && typeof window.pageYOffset !== 'undefined') {
-    try { Object.defineProperty(window, 'scrollY', { get: function () { return window.pageYOffset; } }); } catch (e) {}
+    try { Object.defineProperty(window, 'scrollY', { get: function () { return window.pageYOffset; } }); } catch (e) { window.scrollY = window.pageYOffset || 0; }
   }
   if (typeof window.scrollX === 'undefined' && typeof window.pageXOffset !== 'undefined') {
-    try { Object.defineProperty(window, 'scrollX', { get: function () { return window.pageXOffset; } }); } catch (e) {}
+    try { Object.defineProperty(window, 'scrollX', { get: function () { return window.pageXOffset; } }); } catch (e) { window.scrollX = window.pageXOffset || 0; }
   }
   try {
     var origScrollTo = window.scrollTo;
@@ -193,6 +277,28 @@
       return origScrollTo.call(window, x, y);
     };
   } catch (e) {}
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = function () { this.scrollTop = 0; };
+  } else {
+    // wrap to ignore options object on old engines
+    try {
+      var origSIV = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (arg) {
+        try { return origSIV.call(this, arg); } catch (e) { return origSIV.call(this, !!arg); }
+      };
+    } catch (e) {}
+  }
+
+  // append/remove helpers
+  if (!Element.prototype.append) { Element.prototype.append = function () { for (var i = 0; i < arguments.length; i++) { var n = arguments[i]; this.appendChild(typeof n === 'string' ? document.createTextNode(n) : n); } }; }
+  if (!Element.prototype.remove) { Element.prototype.remove = function () { if (this.parentNode) this.parentNode.removeChild(this); }; }
+  if (!('remove' in CharacterData.prototype)) { CharacterData.prototype.remove = Element.prototype.remove; }
+  if (!('remove' in DocumentType.prototype)) { DocumentType.prototype.remove = Element.prototype.remove; }
+
+  // event target/currentTarget normalization
+  if (window.Event && !('target' in Event.prototype)) {
+    try { Object.defineProperty(Event.prototype, 'target', { get: function () { return this.srcElement; } }); } catch (e) {}
+  }
 
   function registerDialogs() {
     if (typeof window !== 'undefined' && window.dialogPolyfill) {
@@ -206,6 +312,31 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', registerDialogs);
   }
+
+
+  // Runtime error overlay (helps debug on TV browsers without console)
+  function showRuntimeError(msg) {
+    try {
+      var box = document.getElementById('nexa-debug-error');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'nexa-debug-error';
+        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;background:rgba(120,0,0,.92);color:#fff;font:12px/1.4 monospace;padding:8px 10px;border:1px solid #f66;border-radius:6px;max-height:40vh;overflow:auto;white-space:pre-wrap;';
+        (document.body || document.documentElement).appendChild(box);
+      }
+      var line = document.createElement('div');
+      line.textContent = String(msg);
+      box.appendChild(line);
+    } catch (e) {}
+  }
+  window.addEventListener('error', function (e) {
+    var msg = (e && e.message ? e.message : 'Error') + (e && e.filename ? ' @ ' + e.filename + ':' + (e.lineno || '') : '');
+    showRuntimeError(msg);
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var reason = e && e.reason;
+    showRuntimeError('Unhandled rejection: ' + (reason && (reason.stack || reason.message) ? (reason.stack || reason.message) : String(reason)));
+  });
 
   // Failsafe: never leave loading screen stuck if app init fails
   function hideLoader() {

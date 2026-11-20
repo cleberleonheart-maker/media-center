@@ -2231,7 +2231,7 @@ function resetSubtitles() {
     subtitleButton.classList.remove('active');
     subtitleButton.setAttribute('aria-expanded', 'false');
     activeSubtitleId = null;
-    __spreadArray([], __read(videoPlayer.querySelectorAll('track')), false).forEach(function (track) { return track.remove(); });
+    Array.prototype.forEach.call(videoPlayer.querySelectorAll('track'), function (track) { return track.remove(); });
     subtitleObjectUrls.forEach(function (url) { return URL.revokeObjectURL(url); });
     subtitleObjectUrls = [];
     subtitleMenuList.innerHTML = '';
@@ -2293,7 +2293,7 @@ function activateSubtitle(id) {
                         throw new Error('Legenda vazia');
                     url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
                     subtitleObjectUrls.push(url);
-                    __spreadArray([], __read(videoPlayer.querySelectorAll('track')), false).forEach(function (track) { return track.remove(); });
+                    Array.prototype.forEach.call(videoPlayer.querySelectorAll('track'), function (track) { return track.remove(); });
                     track = document.createElement('track');
                     track.kind = 'subtitles';
                     track.label = subtitle.label || 'Legenda';
@@ -2490,7 +2490,7 @@ function showToast(message, type) {
     }, 3200);
 }
 function updateActiveNavigation() {
-    document.querySelectorAll('[data-view]').forEach(function (button) {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function (button) {
         var active = button.dataset.view === state.view;
         button.classList.toggle('active', active);
         if (active)
@@ -3602,7 +3602,7 @@ notificationButton.addEventListener('click', function (event) {
     document.getElementById('mini-profile-button').setAttribute('aria-expanded', 'false');
 });
 function applyNotificationsRead(read) {
-    document.querySelectorAll('[data-notification]').forEach(function (item) { return item.classList.toggle('read', read); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-notification]'), function (item) { return item.classList.toggle('read', read); });
     var dot = document.querySelector('.notification-dot');
     if (dot)
         dot.style.display = read ? 'none' : '';
@@ -3644,7 +3644,7 @@ function updateProfileUI() {
     var profile = activeProfile();
     if (!profile)
         return;
-    document.querySelectorAll('[data-view="musica"]').forEach(function (element) {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-view="musica"]'), function (element) {
         element.hidden = Boolean(profile.kids);
     });
     var initials = profileInitials(profile.name);
