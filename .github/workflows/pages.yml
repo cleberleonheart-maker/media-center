@@ -15,7 +15,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax check
+        run: |
+          node --check app.js
+          node --check service-worker.js
+          node --check tests/smoke.js
+
+      - name: Install smoke dependencies
+        run: npm install --no-save --no-package-lock jsdom@22
+
+      - name: Run smoke test
+        run: node tests/smoke.js
+
   deploy:
+    needs: smoke
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

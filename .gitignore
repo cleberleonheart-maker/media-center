@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+app.es2015.iife.js
+node_modules/
+package-lock.json
