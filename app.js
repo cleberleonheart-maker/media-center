@@ -451,6 +451,52 @@ var storage = {
         return true;
     }
 };
+var STATS_KEY = 'nexa-stats';
+function normalizeCountMap(raw) {
+    var map = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+        return map;
+    Object.keys(raw).forEach(function (key) {
+        var value = Number(raw[key]);
+        if (Number.isFinite(value) && value > 0)
+            map[key] = Math.floor(value);
+    });
+    return map;
+}
+function normalizeStats(raw) {
+    var source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    var history = Array.isArray(source.history) ? source.history.filter(function (entry) {
+        return entry && typeof entry === 'object' && typeof entry.id === 'string';
+    }).slice(0, 80).map(function (entry) {
+        return {
+            id: entry.id,
+            title: String(entry.title || ''),
+            at: Number(entry.at) || Date.now(),
+            episode: Number.isInteger(entry.episode) ? entry.episode : null,
+            seconds: Math.max(0, Math.floor(Number(entry.seconds) || 0))
+        };
+    }) : [];
+    return { plays: normalizeCountMap(source.plays), seconds: normalizeCountMap(source.seconds), history: history, current: null };
+}
+function loadStats() {
+    var all = storage.get(STATS_KEY, {});
+    if (!all || typeof all !== 'object' || Array.isArray(all))
+        all = {};
+    var profile = activeProfile();
+    var key = profile && profile.id ? profile.id : 'principal';
+    return normalizeStats(all[key]);
+}
+function saveStats() {
+    var all = storage.get(STATS_KEY, {});
+    if (!all || typeof all !== 'object' || Array.isArray(all))
+        all = {};
+    var profile = activeProfile();
+    var key = profile && profile.id ? profile.id : 'principal';
+    var clean = normalizeStats(state.stats);
+    clean.current = state.stats ? state.stats.current : null;
+    all[key] = clean;
+    storage.set(STATS_KEY, all);
+}
 var PROFILE_COLORS = ['#e50914', '#f5a623', '#4f9cf9', '#39c07c', '#b06ef5', '#f06292', '#00bcd4', '#ff7043'];
 var KIDS_MATURITY = new Set(['L', '10+', '12+']);
 var PROFILES_KEY = 'nexa-profiles';
@@ -476,7 +522,9 @@ function normalizeProfile(raw, index) {
         color: /^#[0-9a-f]{6}$/i.test(source.color || '') ? source.color : PROFILE_COLORS[index % PROFILE_COLORS.length],
         list: Array.isArray(source.list) ? source.list.filter(function (id) { return typeof id === 'string'; }) : [],
         liked: Array.isArray(source.liked) ? source.liked.filter(function (id) { return typeof id === 'string'; }) : [],
-        progress: source.progress && typeof source.progress === 'object' && !Array.isArray(source.progress) ? __assign({}, source.progress) : {}
+        progress: source.progress && typeof source.progress === 'object' && !Array.isArray(source.progress) ? __assign({}, source.progress) : {},
+        queue: Array.isArray(source.queue) ? source.queue.filter(function (entry) { return entry && typeof entry.id === 'string'; }).slice(0, 200) : [],
+        queueIndex: Number.isInteger(source.queueIndex) ? source.queueIndex : -1
     };
 }
 function loadProfiles() {
@@ -508,6 +556,73 @@ function saveProfiles() {
     storage.set(PROFILES_KEY, profiles);
     storage.set(ACTIVE_PROFILE_KEY, activeProfileId);
 }
+var DEFAULT_ADVANCED_FILTERS = { status: 'todos', source: 'todas', duration: 'qualquer', year: 'todos' };
+function normalizeAdvancedFilters(raw) {
+    var source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    return {
+        status: ['todos', 'nao-vistos', 'em-andamento', 'assistidos'].indexOf(source.status) >= 0 ? source.status : 'todos',
+        source: ['todas', 'nexa', 'drive', 'hd'].indexOf(source.source) >= 0 ? source.source : 'todas',
+        duration: ['qualquer', 'curta', 'media', 'longa'].indexOf(source.duration) >= 0 ? source.duration : 'qualquer',
+        year: ['todos', '2020s', '2010s', 'classicos'].indexOf(source.year) >= 0 ? source.year : 'todos'
+    };
+}
+function advancedFilterCount(filters) {
+    var count = 0;
+    Object.keys(DEFAULT_ADVANCED_FILTERS).forEach(function (key) {
+        if (filters[key] !== DEFAULT_ADVANCED_FILTERS[key])
+            count++;
+    });
+    return count;
+}
+function durationMinutes(item) {
+    var text = String(item && item.duration || '');
+    var hours = text.match(/(\d+)\s*h/);
+    var minutes = text.match(/(\d+)\s*min/);
+    var total = 0;
+    if (hours)
+        total += Number(hours[1]) * 60;
+    if (minutes)
+        total += Number(minutes[1]);
+    return total;
+}
+function applyAdvancedFilters(items) {
+    var filters = state.advancedFilters;
+    return items.filter(function (item) {
+        if (filters.status === 'nao-vistos' && (state.progress[item.id] || isItemSeen(item)))
+            return false;
+        if (filters.status === 'em-andamento' && !isItemInProgress(item))
+            return false;
+        if (filters.status === 'assistidos' && !isItemSeen(item))
+            return false;
+        if (filters.source === 'nexa' && (item.drive || item.local))
+            return false;
+        if (filters.source === 'drive' && !item.drive)
+            return false;
+        if (filters.source === 'hd' && !item.local)
+            return false;
+        if (filters.duration !== 'qualquer') {
+            var minutes = durationMinutes(item);
+            if (!minutes)
+                return false;
+            if (filters.duration === 'curta' && minutes >= 90)
+                return false;
+            if (filters.duration === 'media' && (minutes < 90 || minutes > 150))
+                return false;
+            if (filters.duration === 'longa' && minutes <= 150)
+                return false;
+        }
+        if (filters.year !== 'todos') {
+            var year = numericValue(item.year, 0);
+            if (filters.year === '2020s' && year < 2020)
+                return false;
+            if (filters.year === '2010s' && (year < 2010 || year > 2019))
+                return false;
+            if (filters.year === 'classicos' && year >= 2010)
+                return false;
+        }
+        return true;
+    });
+}
 var state = {
     view: 'home',
     previousView: 'home',
@@ -515,6 +630,14 @@ var state = {
     genre: 'Todos',
     sort: 'relevancia',
     searchFilters: { type: 'todos', genre: 'Todos', year: 'todos', rating: 0 },
+    advancedFilters: normalizeAdvancedFilters(storage.get('nexa-advanced-filters', null)),
+    advancedOpen: false,
+    queue: [],
+    queueIndex: -1,
+    stats: loadStats(),
+    watchSeconds: 0,
+    lastWatchTime: 0,
+    playRecorded: false,
     quality: storage.get('nexa-quality', 'HD'),
     autoplay: storage.get('nexa-autoplay', true),
     list: new Set(activeProfile().list),
@@ -533,6 +656,8 @@ var state = {
     activeTrackIndex: -1,
     hideControlsTimer: null
 };
+state.queue = (activeProfile().queue || []).map(normalizeQueueEntry).filter(Boolean).slice(0, 200);
+state.queueIndex = Number.isInteger(activeProfile().queueIndex) ? Math.min(Math.max(activeProfile().queueIndex, -1), state.queue.length - 1) : -1;
 function persistActiveProfile() {
     var profile = activeProfile();
     if (!profile)
@@ -540,7 +665,241 @@ function persistActiveProfile() {
     profile.list = __spreadArray([], __read(state.list), false);
     profile.liked = __spreadArray([], __read(state.liked), false);
     profile.progress = __assign({}, state.progress);
+    profile.queue = state.queue.slice(0, 200);
+    profile.queueIndex = state.queueIndex;
     saveProfiles();
+}
+function normalizeQueueEntry(raw) {
+    if (!raw || typeof raw !== 'object')
+        return null;
+    var id = String(raw.id || '');
+    if (!id)
+        return null;
+    return {
+        id: id,
+        season: Number.isInteger(raw.season) && raw.season >= 0 ? raw.season : 0,
+        episode: Number.isInteger(raw.episode) && raw.episode >= 0 ? raw.episode : null
+    };
+}
+function saveQueue() {
+    persistActiveProfile();
+    renderQueueUI();
+}
+function setQueue(entries, index) {
+    state.queue = (entries || []).map(normalizeQueueEntry).filter(Boolean).slice(0, 200);
+    state.queueIndex = state.queue.length ? Math.min(Math.max(Number(index) || 0, 0), state.queue.length - 1) : -1;
+    saveQueue();
+}
+function addToQueue(id, options, silent) {
+    var item = getItem(id);
+    if (!item || !isAllowedItem(item)) {
+        showToast('Título indisponível para este perfil.', 'error');
+        return false;
+    }
+    if (state.queue.some(function (entry) { return entry.id === id && entry.episode === null; })) {
+        if (!silent)
+            showToast('Este título já está na fila.', 'success');
+        return false;
+    }
+    var entry = normalizeQueueEntry(options) || { id: id, season: 0, episode: null };
+    state.queue.push(entry);
+    if (state.queueIndex < 0)
+        state.queueIndex = 0;
+    saveQueue();
+    if (!silent)
+        showToast("".concat(item.title, " adicionado \u00E0 fila"), 'success');
+    return true;
+}
+function removeFromQueue(index) {
+    if (index < 0 || index >= state.queue.length)
+        return;
+    state.queue.splice(index, 1);
+    if (state.queueIndex >= state.queue.length)
+        state.queueIndex = state.queue.length - 1;
+    if (!state.queue.length)
+        state.queueIndex = -1;
+    saveQueue();
+}
+function clearQueue() {
+    state.queue = [];
+    state.queueIndex = -1;
+    saveQueue();
+    showToast('Fila limpa.', 'success');
+}
+function queueFromView(id) {
+    var items = filteredCatalog(state.view).filter(isAllowedItem);
+    var entries = items.map(function (item) { return { id: item.id, season: 0, episode: null }; });
+    var index = 0;
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].id === id) {
+            index = i;
+            break;
+        }
+    }
+    return { entries: entries, index: index };
+}
+function playTitle(id) {
+    var item = getItem(id);
+    if (!item)
+        return;
+    var resolved = queueFromView(id);
+    if (!resolved.entries.length)
+        setQueue([{ id: id, season: 0, episode: null }], 0);
+    else
+        setQueue(resolved.entries, resolved.index);
+    openPlayer(id);
+}
+function playQueued(index) {
+    var entry = state.queue[index];
+    if (!entry || !getItem(entry.id))
+        return false;
+    state.queueIndex = index;
+    saveQueue();
+    openPlayer(entry.id, entry.episode, { season: entry.season, autoplay: true });
+    return true;
+}
+function playNextQueued() {
+    if (state.queueIndex < 0 || state.queueIndex >= state.queue.length - 1)
+        return false;
+    return playQueued(state.queueIndex + 1);
+}
+function playPreviousQueued() {
+    if (state.queueIndex <= 0)
+        return false;
+    return playQueued(state.queueIndex - 1);
+}
+function queueEntryLabel(entry) {
+    var item = getItem(entry.id);
+    var label = item ? item.title : entry.id;
+    if (entry.episode !== null && item && item.seasons) {
+        var season = item.seasons[entry.season];
+        var seasonName = season && season.name ? season.name : "T".concat(entry.season + 1);
+        label = "".concat(label, " \u00B7 ").concat(seasonName, " Ep ").concat(entry.episode + 1);
+    }
+    return label;
+}
+function queueListHtml() {
+    if (!state.queue.length)
+        return '<p class="queue-empty">Sua fila está vazia. Adicione títulos com o botão + nos cards ou na página de detalhes.</p>';
+    return state.queue.map(function (entry, index) {
+        var current = index === state.queueIndex;
+        var label = escapeHtml(queueEntryLabel(entry));
+        return "<div class=\"queue-item ".concat(current ? 'current' : '', "\">\n        <button class=\"queue-play\" type=\"button\" data-queue-play=\"").concat(index, "\" aria-label=\"Reproduzir ").concat(label, "\">").concat(icon('play'), "</button>\n        <span class=\"queue-copy\"><strong>").concat(label, "</strong><small>").concat(current ? 'Tocando agora' : "Posi\u00E7\u00E3o ".concat(index + 1), "</small></span>\n        <button class=\"queue-remove\" type=\"button\" data-queue-remove=\"").concat(index, "\" aria-label=\"Remover da fila\">").concat(icon('close'), "</button>\n      </div>");
+    }).join('');
+}
+function renderQueueUI() {
+    ['queue-list', 'queue-dialog-list'].forEach(function (id) {
+        var list = document.getElementById(id);
+        if (list)
+            list.innerHTML = queueListHtml();
+    });
+    var count = document.getElementById('player-queue-count');
+    if (count) {
+        count.textContent = String(state.queue.length);
+        count.hidden = !state.queue.length;
+    }
+    var navCount = document.getElementById('queue-nav-count');
+    if (navCount) {
+        navCount.textContent = String(state.queue.length);
+        navCount.hidden = !state.queue.length;
+    }
+    var prev = document.getElementById('player-prev');
+    if (prev)
+        prev.hidden = state.queueIndex <= 0;
+    var next = document.getElementById('player-next');
+    if (next) {
+        var hasEpisode = !!nextEpisodeTarget();
+        next.hidden = !hasEpisode && !(state.queueIndex >= 0 && state.queueIndex < state.queue.length - 1);
+        next.setAttribute('aria-label', hasEpisode ? 'Próximo episódio' : 'Próximo da fila');
+    }
+}
+function toggleQueuePanel(force) {
+    var panel = document.getElementById('queue-panel');
+    var button = document.getElementById('player-queue');
+    if (!panel)
+        return;
+    panel.hidden = typeof force === 'boolean' ? !force : !panel.hidden;
+    if (button) {
+        button.classList.toggle('active', !panel.hidden);
+        button.setAttribute('aria-expanded', String(!panel.hidden));
+    }
+    if (!panel.hidden)
+        renderQueueUI();
+}
+function openQueueDialog() {
+    var dialog = document.getElementById('queue-dialog');
+    if (!dialog)
+        return;
+    renderQueueUI();
+    if (!dialog.open) {
+        dialog.showModal();
+        document.body.classList.add('modal-open');
+    }
+}
+function recordPlay(item, episodeIndex) {
+    if (!item)
+        return;
+    flushWatchTime();
+    state.stats.plays[item.id] = (Number(state.stats.plays[item.id]) || 0) + 1;
+    state.stats.history.unshift({
+        id: item.id,
+        title: item.title,
+        at: Date.now(),
+        episode: Number.isInteger(episodeIndex) ? episodeIndex : null,
+        seconds: 0
+    });
+    if (state.stats.history.length > 80)
+        state.stats.history.length = 80;
+    state.stats.current = item.id;
+    saveStats();
+}
+function trackWatchTime() {
+    if (!state.stats || !state.stats.current || videoPlayer.paused || videoPlayer.ended)
+        return;
+    var time = Number(videoPlayer.currentTime) || 0;
+    var delta = time - Number(state.lastWatchTime || 0);
+    state.lastWatchTime = time;
+    if (delta <= 0 || delta >= 2)
+        return;
+    state.watchSeconds += delta;
+    if (state.watchSeconds >= 10)
+        flushWatchTime();
+}
+function flushWatchTime() {
+    var seconds = Math.floor(state.watchSeconds);
+    state.watchSeconds = 0;
+    if (seconds <= 0 || !state.stats || !state.stats.current)
+        return;
+    var id = state.stats.current;
+    state.stats.seconds[id] = (Number(state.stats.seconds[id]) || 0) + seconds;
+    var latest = state.stats.history[0];
+    if (latest && latest.id === id)
+        latest.seconds = (Number(latest.seconds) || 0) + seconds;
+    saveStats();
+}
+function endWatchSession() {
+    flushWatchTime();
+    if (state.stats)
+        state.stats.current = null;
+    state.lastWatchTime = 0;
+}
+function formatWatchTime(totalSeconds) {
+    var seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    var hours = Math.floor(seconds / 3600);
+    var minutes = Math.floor((seconds % 3600) / 60);
+    if (hours)
+        return "".concat(hours, "h ").concat(minutes, "min");
+    if (minutes)
+        return "".concat(minutes, "min");
+    return "".concat(seconds, "s");
+}
+function topWatchedItems(limit) {
+    var items = Object.keys(state.stats.plays).map(function (id) {
+        var item = getItem(id);
+        return { id: id, item: item, plays: Number(state.stats.plays[id]) || 0, seconds: Number(state.stats.seconds[id]) || 0 };
+    }).filter(function (entry) { return entry.plays > 0 && entry.item; });
+    items.sort(function (a, b) { return b.plays - a.plays || b.seconds - a.seconds; });
+    return limit ? items.slice(0, limit) : items;
 }
 var subtitleStore = new Map();
 var activeSubtitleId = null;
@@ -572,7 +931,12 @@ var icons = {
     sparkle: 'icon-sparkle',
     search: 'icon-search',
     lock: 'icon-lock',
-    user: 'icon-user'
+    user: 'icon-user',
+    list: 'icon-list',
+    filter: 'icon-filter',
+    chart: 'icon-chart',
+    prev: 'icon-prev',
+    trash: 'icon-trash'
 };
 var mainContent = document.getElementById('main-content');
 var detailsDialog = document.getElementById('details-dialog');
@@ -1726,6 +2090,16 @@ function sortItems(items) {
         return sorted.sort(function (a, b) { return numericValue(b.rating) - numericValue(a.rating); });
     if (state.sort === 'a-z')
         return sorted.sort(function (a, b) { return String(a.title).localeCompare(String(b.title), 'pt-BR'); });
+    if (state.sort === 'assistidos')
+        return sorted.sort(function (a, b) { return (Number(state.stats.plays[b.id]) || 0) - (Number(state.stats.plays[a.id]) || 0); });
+    if (state.sort === 'duracao')
+        return sorted.sort(function (a, b) { return durationMinutes(b) - durationMinutes(a); });
+    if (state.sort === 'adicionados')
+        return sorted.sort(function (a, b) {
+            var aTime = Number(a.addedAt || (state.progress[a.id] || {}).updatedAt) || 0;
+            var bTime = Number(b.addedAt || (state.progress[b.id] || {}).updatedAt) || 0;
+            return bTime - aTime;
+        });
     return sorted;
 }
 function filteredCatalog(view) {
@@ -1764,6 +2138,8 @@ function filteredCatalog(view) {
             .toLocaleLowerCase('pt-BR')
             .includes(query_1); });
     }
+    if (view !== 'home')
+        items = applyAdvancedFilters(items);
     return sortItems(items);
 }
 function posterCard(item, options) {
@@ -1773,7 +2149,7 @@ function posterCard(item, options) {
     var badge = item.original ? '<span class="card-badge original">Original</span>' : item.new ? '<span class="card-badge">Novo</span>' : '';
     var showProgress = progress && progress.percent > 0 && progress.percent < 100;
     var progressBar = showProgress ? "<span class=\"card-progress\" role=\"progressbar\" aria-label=\"Progresso de ".concat(escapeHtml(item.title), "\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"").concat(progress.percent, "\"><span aria-hidden=\"true\" style=\"width:").concat(progress.percent, "%\"></span></span>") : '';
-    var poster = "\n    <div class=\"poster-wrap\">\n      <img src=\"".concat(escapeHtml(item.poster), "\" alt=\"P\u00F4ster de ").concat(escapeHtml(item.title), "\" loading=\"lazy\">\n      ").concat(badge, "\n      <button class=\"poster-open\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\"></button>\n      <div class=\"card-overlay\">\n        <button class=\"card-play\" type=\"button\" data-action=\"play\" data-id=\"").concat(item.id, "\" aria-label=\"Assistir ").concat(escapeHtml(item.title), "\">").concat(icon('play'), "</button>\n        <button class=\"card-info\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\">").concat(icon('info'), "</button>\n        <button class=\"card-list ").concat(state.list.has(item.id) ? 'in-list' : '', "\" type=\"button\" data-action=\"toggle-list\" data-id=\"").concat(item.id, "\" aria-label=\"").concat(state.list.has(item.id) ? 'Remover' : 'Adicionar', " ").concat(escapeHtml(item.title), " ").concat(state.list.has(item.id) ? 'da' : 'à', " lista\">").concat(state.list.has(item.id) ? icon('check') : icon('plus'), "</button>\n      </div>\n      ").concat(progressBar, "\n    </div>");
+    var poster = "\n    <div class=\"poster-wrap\">\n      <img src=\"".concat(escapeHtml(item.poster), "\" alt=\"P\u00F4ster de ").concat(escapeHtml(item.title), "\" loading=\"lazy\">\n      ").concat(badge, "\n      <button class=\"poster-open\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\"></button>\n      <div class=\"card-overlay\">\n        <button class=\"card-play\" type=\"button\" data-action=\"play\" data-id=\"").concat(item.id, "\" aria-label=\"Assistir ").concat(escapeHtml(item.title), "\">").concat(icon('play'), "</button>\n        <button class=\"card-info\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\">").concat(icon('info'), "</button>\n        <button class=\"card-list ").concat(state.list.has(item.id) ? 'in-list' : '', "\" type=\"button\" data-action=\"toggle-list\" data-id=\"").concat(item.id, "\" aria-label=\"").concat(state.list.has(item.id) ? 'Remover' : 'Adicionar', " ").concat(escapeHtml(item.title), " ").concat(state.list.has(item.id) ? 'da' : 'à', " lista\">").concat(state.list.has(item.id) ? icon('check') : icon('plus'), "</button>\n        <button class=\"card-queue\" type=\"button\" data-action=\"add-queue\" data-id=\"").concat(item.id, "\" aria-label=\"Adicionar ").concat(escapeHtml(item.title), " \u00E0 fila\">").concat(icon('list'), "</button>\n      </div>\n      ").concat(progressBar, "\n    </div>");
     var inner = "\n    ".concat(poster, "\n    <h3 class=\"poster-title\">").concat(escapeHtml(item.title), "</h3>\n    <div class=\"poster-meta\"><span class=\"match-score\">").concat(escapeHtml(item.match), "%</span><span>\u2022</span><span>").concat(escapeHtml(item.year), "</span><span>\u2022</span><span>").concat(escapeHtml(typeLabel[item.type]), "</span></div>");
     if (isTop) {
         return "<article class=\"media-card rank-wrap\" data-id=\"".concat(item.id, "\"><span class=\"rank-number\">").concat(options.rank, "</span><div class=\"poster-button\">").concat(inner, "</div></article>");
@@ -1880,7 +2256,46 @@ function stopMusic() {
     document.body.classList.remove('music-open');
     state.activeTrackIndex = -1;
 }
+function formatStatDate(timestamp) {
+    var date = new Date(Number(timestamp) || Date.now());
+    var months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    return String(date.getDate()).padStart(2, '0') + ' ' + months[date.getMonth()] + ' ' + String(date.getFullYear());
+}
+function renderStatsView() {
+    state.view = 'estatisticas';
+    updateActiveNavigation();
+    var stats = state.stats || normalizeStats(null);
+    var plays = 0;
+    var seconds = 0;
+    var titles = {};
+    Object.keys(stats.plays).forEach(function (id) {
+        var count = Number(stats.plays[id]) || 0;
+        if (count > 0) {
+            plays += count;
+            titles[id] = true;
+        }
+    });
+    Object.keys(stats.seconds).forEach(function (id) { seconds += Number(stats.seconds[id]) || 0; });
+    var completed = Object.keys(titles).filter(function (id) { return isItemSeen(getItem(id)); }).length;
+    var top = topWatchedItems(10);
+    var maxPlays = top.length ? top[0].plays : 1;
+    var topHtml = top.length ? "<ol class=\"top-watched\">".concat(top.map(function (entry, index) {
+        var item = entry.item;
+        var width = Math.round((entry.plays / maxPlays) * 100);
+        return "<li class=\"top-watched-item\">\n        <span class=\"top-rank\">".concat(index + 1, "</span>\n        <img src=\"").concat(escapeHtml(item.poster || fallbackArtwork), "\" alt=\"\">\n        <span class=\"top-copy\"><strong>").concat(escapeHtml(item.title), "</strong><small>").concat(escapeHtml(typeLabel[item.type] || 'T\u00EDtulo'), " \u00B7 ").concat(escapeHtml(item.year), " \u00B7 ").concat(formatWatchTime(entry.seconds), " assistidos</small><span class=\"top-bar\"><span style=\"width:").concat(width, "%\"></span></span></span>\n        <span class=\"top-value\">").concat(entry.plays, "x</span>\n      </li>");
+    }).join(''), "</ol>") : '<p class="stats-empty">Reproduza um título para começar a registrar estatísticas.</p>';
+    var historyHtml = stats.history.length ? "<ul class=\"history-list\">".concat(stats.history.slice(0, 12).map(function (entry) {
+        var item = getItem(entry.id);
+        var title = item ? item.title : entry.title || entry.id;
+        var episode = entry.episode !== null && item && item.seasons ? " \u00B7 Epis\u00F3dio ".concat(entry.episode + 1) : '';
+        return "<li><span class=\"history-icon\">".concat(icon('play'), "</span><span class=\"history-copy\"><strong>").concat(escapeHtml(title), "</strong><small>").concat(formatStatDate(entry.at), episode, " \u00B7 ").concat(formatWatchTime(entry.seconds), "</small></span></li>");
+    }).join(''), "</ul>") : '<p class="stats-empty">Nenhuma reprodução registrada ainda.</p>';
+    mainContent.innerHTML = "\n    <section class=\"section-view stats-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">Seu perfil</p><h1>Estat\u00EDsticas</h1><p>Veja o que voc\u00EA mais assistiu neste perfil. Os dados ficam salvos somente neste navegador.</p></div></header>\n      <div class=\"stats-summary\">\n        <div class=\"stat-card\"><span>Reprodu\u00E7\u00F5es</span><strong>".concat(plays, "</strong><small>títulos iniciados</small></div>\n        <div class=\"stat-card\"><span>Tempo assistido</span><strong>").concat(formatWatchTime(seconds), "</strong><small>somando todas as sess\u00F5es</small></div>\n        <div class=\"stat-card\"><span>T\u00EDtulos distintos</span><strong>").concat(Object.keys(titles).length, "</strong><small>filmes e s\u00E9ries assistidos</small></div>\n        <div class=\"stat-card\"><span>Conclu\u00EDdos</span><strong>").concat(completed, "</strong><small>marcados como vistos</small></div>\n      </div>\n      <section class=\"stats-block\">\n        <div class=\"section-heading compact\"><h2>Mais assistidos</h2></div>\n        ").concat(topHtml, "\n      </section>\n      <section class=\"stats-block\">\n        <div class=\"section-heading compact\"><h2>Hist\u00F3rico recente</h2></div>\n        ").concat(historyHtml, "\n      </section>\n      <button class=\"button button-secondary stats-clear\" id=\"stats-clear\" type=\"button\" data-action=\"clear-stats\">Limpar estat\u00EDsticas</button>\n    </section>");
+}
 function browseEmptyState() {
+    if (advancedFilterCount(state.advancedFilters)) {
+        return "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon('filter'), "</span><h2>Nenhum t\u00EDtulo com esses filtros</h2><p>Ajuste os filtros avan\u00E7ados para ver mais t\u00EDtulos do cat\u00E1logo.</p><button class=\"button button-red\" type=\"button\" data-action=\"reset-advanced\">Limpar filtros avan\u00E7ados</button></div></div>");
+    }
     if (state.genre !== 'Todos') {
         return "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon('film'), "</span><h2>Nenhum t\u00EDtulo em ").concat(escapeHtml(state.genre), "</h2><p>Experimente outro g\u00EAnero ou limpe os filtros para ver o cat\u00E1logo completo.</p><button class=\"button button-red\" type=\"button\" data-genre=\"Todos\">Limpar filtros</button></div></div>");
     }
@@ -1894,6 +2309,12 @@ function browseEmptyState() {
     var _a = __read(copy[state.view] || ['Nada encontrado', 'Tente ajustar seus filtros.', 'search'], 3), title = _a[0], text = _a[1], iconName = _a[2];
     return "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon(iconName), "</span><h2>").concat(title, "</h2><p>").concat(text, "</p><button class=\"button button-red\" type=\"button\" data-view-link=\"home\">Descobrir t\u00EDtulos</button></div></div>");
 }
+function advancedSelect(name, label, options) {
+    var current = state.advancedFilters[name];
+    return "<label class=\"search-filter\">".concat(label, "<select class=\"sort-select\" data-advanced=\"").concat(name, "\" aria-label=\"").concat(label, "\">").concat(options.map(function (option) {
+        return "<option value=\"".concat(option[0], "\"").concat(current === option[0] ? ' selected' : '', ">").concat(option[1], "</option>");
+    }).join(''), "</select></label>");
+}
 function browseView() {
     var items = filteredCatalog(state.view);
     var titles = {
@@ -1905,10 +2326,22 @@ function browseView() {
     };
     var _a = __read(titles[state.view] || ['Catálogo', 'Encontre sua próxima história.'], 2), title = _a[0], subtitle = _a[1];
     var chips = getGenres().map(function (genre) { return "<button class=\"filter-chip ".concat(state.genre === genre ? 'active' : '', "\" type=\"button\" data-genre=\"").concat(genre, "\">").concat(genre, "</button>"); }).join('');
+    var filterCount = advancedFilterCount(state.advancedFilters);
+    var advancedPanel = "\n      <div class=\"advanced-filters\" id=\"advanced-filters\"".concat(state.advancedOpen ? '' : ' hidden', ">\n        ").concat(advancedSelect('status', 'Status', [['todos', 'Todos'], ['nao-vistos', 'Não assistidos'], ['em-andamento', 'Em andamento'], ['assistidos', 'Assistidos']]), "\n        ").concat(advancedSelect('source', 'Origem', [['todas', 'Todas'], ['nexa', 'Catálogo NEXA'], ['drive', 'Google Drive'], ['hd', 'HD local']]), "\n        ").concat(advancedSelect('duration', 'Duração', [['qualquer', 'Qualquer'], ['curta', 'Até 1h30'], ['media', '1h30 a 2h30'], ['longa', 'Acima de 2h30']]), "\n        ").concat(advancedSelect('year', 'Ano', [['todos', 'Qualquer'], ['2020s', '2020 em diante'], ['2010s', '2010 a 2019'], ['classicos', 'Antes de 2010']]), "\n        <button class=\"filter-reset\" id=\"advanced-reset\" type=\"button\"").concat(filterCount ? '' : ' disabled', ">Limpar filtros").concat(filterCount ? " (".concat(filterCount, ")") : '', "</button>\n      </div>");
     var content = items.length
         ? "<div class=\"media-grid\">".concat(items.map(function (item) { return posterCard(item); }).join(''), "</div>")
         : browseEmptyState();
-    mainContent.innerHTML = "\n    <section class=\"section-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">NEXA cat\u00E1logo</p><h1>".concat(title, "</h1><p>").concat(subtitle, "</p></div></header>\n      <div class=\"filter-bar\">\n        ").concat(chips, "\n        <select class=\"sort-select\" id=\"sort-select\" aria-label=\"Ordenar cat\u00E1logo\">\n          <option value=\"relevancia\" ").concat(state.sort === 'relevancia' ? 'selected' : '', ">Mais relevantes</option>\n          <option value=\"recentes\" ").concat(state.sort === 'recentes' ? 'selected' : '', ">Mais recentes</option>\n          <option value=\"avaliacao\" ").concat(state.sort === 'avaliacao' ? 'selected' : '', ">Melhor avaliados</option>\n          <option value=\"a-z\" ").concat(state.sort === 'a-z' ? 'selected' : '', ">T\u00EDtulo (A\u2013Z)</option>\n        </select>\n      </div>\n      ").concat(content, "\n    </section>");
+    var sortOptions = [
+        ['relevancia', 'Mais relevantes'], ['recentes', 'Mais recentes'],
+        ['avaliacao', 'Melhor avaliados'], ['a-z', 'Título (A–Z)'],
+        ['assistidos', 'Mais assistidos'], ['duracao', 'Maior duração'],
+        ['adicionados', 'Adicionados recentemente']
+    ];
+    var sortSelect = "<select class=\"sort-select\" id=\"sort-select\" aria-label=\"Ordenar catálogo\">".concat(sortOptions.map(function (option) {
+        return "<option value=\"".concat(option[0], "\"").concat(state.sort === option[0] ? ' selected' : '', ">").concat(option[1], "</option>");
+    }).join(''), "</select>");
+    var toggle = "<button class=\"filter-chip advanced-toggle ".concat(state.advancedOpen ? 'active' : '', "\" id=\"advanced-toggle\" type=\"button\" aria-expanded=\"").concat(state.advancedOpen, "\">Filtros avançados").concat(filterCount ? " (".concat(filterCount, ")") : '', "</button>");
+    mainContent.innerHTML = "\n    <section class=\"section-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">NEXA catálogo</p><h1>".concat(title, "</h1><p>").concat(subtitle, "</p></div></header>\n      <div class=\"filter-bar\">\n        ").concat(chips, "\n        ").concat(toggle, "\n        ").concat(sortSelect, "\n      </div>\n      ").concat(advancedPanel, "\n      ").concat(content, "\n    </section>");
 }
 function renderView(view) {
     state.view = view;
@@ -1920,6 +2353,8 @@ function renderView(view) {
         renderHome();
     else if (view === 'musica')
         renderMusicView();
+    else if (view === 'estatisticas')
+        renderStatsView();
     else
         browseView();
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -1929,6 +2364,8 @@ function refreshCurrentView() {
         renderHome();
     else if (state.view === 'musica')
         renderMusicView();
+    else if (state.view === 'estatisticas')
+        renderStatsView();
     else if (state.view !== 'busca')
         browseView();
 }
@@ -1974,6 +2411,10 @@ function openDetails(id) {
     var playButton = document.getElementById('detail-play');
     playButton.innerHTML = "".concat(icon('play'), "<span>").concat(isItemSeen(item) ? 'Assistir novamente' : (isItemInProgress(item) ? 'Continuar assistindo' : 'Assistir'), "</span>");
     playButton.dataset.id = item.id;
+    var queueButton = document.getElementById('detail-queue');
+    var queued = state.queue.some(function (entry) { return entry.id === item.id && entry.episode === null; });
+    queueButton.innerHTML = "".concat(icon(queued ? 'check' : 'list'), "<span>").concat(queued ? 'Na fila' : 'Adicionar \u00E0 fila', "</span>");
+    queueButton.dataset.id = item.id;
     updateSeenButton(item);
     document.getElementById('detail-share').dataset.id = item.id;
     var omdbButton = document.getElementById('detail-omdb');
@@ -2025,9 +2466,7 @@ function nextEpisodeTarget(active) {
     return { seasonIndex: nextSeasonIndex, episodeIndex: nextEpisodeIndex };
 }
 function updatePlayerNextButton() {
-    var button = document.getElementById('player-next');
-    if (button)
-        button.hidden = !nextEpisodeTarget();
+    renderQueueUI();
 }
 function playNextEpisode(target) {
     var _a, _b;
@@ -2059,13 +2498,14 @@ function openPlayer(id, episodeIndex, options) {
     var item = getItem(id);
     if (!item)
         return;
+    flushWatchTime();
     if (!isAllowedItem(item)) {
         showToast('Este título não está disponível no perfil infantil.', 'error');
         return;
     }
     var fromDetails = (_a = options.fromDetails) !== null && _a !== void 0 ? _a : detailsDialog.open;
     var resolvedEpisode = episodeIndex;
-    var resolvedSeason = state.activeSeason;
+    var resolvedSeason = Number.isInteger(options.season) ? options.season : state.activeSeason;
     if (resolvedEpisode === null && ((_b = item.seasons) === null || _b === void 0 ? void 0 : _b.length) && (item.drive || item.local)) {
         var last = state.progress[item.id];
         if (last && Number.isInteger(last.season) && Number.isInteger(last.episode)) {
@@ -2090,6 +2530,9 @@ function openPlayer(id, episodeIndex, options) {
         ? "".concat(item.id, "::s").concat(resolvedSeason, "e").concat(resolvedEpisode)
         : item.id;
     state.activeVideo = { item: item, episodeIndex: resolvedEpisode, seasonIndex: resolvedSeason, episodeFile: episodeFile, progressKey: progressKey, fallbackTried: false, fromDetails: fromDetails };
+    state.playRecorded = false;
+    state.lastWatchTime = 0;
+    toggleQueuePanel(false);
     if (resolvedEpisode !== null && item.seasons)
         state.activeSeason = resolvedSeason;
     videoPlayer.poster = item.backdrop;
@@ -2238,6 +2681,7 @@ function togglePictureInPicture() {
 }
 
 function closePlayer() {
+    endWatchSession();
     if (videoPlayer.paused === false)
         videoPlayer.pause();
     resetSubtitles();
@@ -2574,7 +3018,7 @@ function searchFiltersView() {
     var filters = state.searchFilters;
     var types = [['todos', 'Todos'], ['filme', 'Filmes'], ['serie', 'Séries'], ['documentario', 'Documentários']];
     var ratings = [[0, 'Qualquer nota'], [7, 'Nota 7+'], [8, 'Nota 8+'], [9, 'Nota 9+']];
-    var sorts = [['relevancia', 'Mais relevantes'], ['recentes', 'Mais recentes'], ['avaliacao', 'Melhor avaliados'], ['a-z', 'Título (A–Z)']];
+    var sorts = [['relevancia', 'Mais relevantes'], ['recentes', 'Mais recentes'], ['avaliacao', 'Melhor avaliados'], ['a-z', 'Título (A–Z)'], ['assistidos', 'Mais assistidos'], ['duracao', 'Maior duração'], ['adicionados', 'Adicionados recentemente']];
     var genres = getGenres();
     var years = getSearchYears();
     var active = filters.type !== 'todos' || filters.genre !== 'Todos' || filters.year !== 'todos' || Number(filters.rating) > 0;
@@ -2793,15 +3237,61 @@ document.addEventListener('click', function (event) {
         }, 60);
         return;
     }
+    var queuePlayTarget = event.target.closest('[data-queue-play]');
+    if (queuePlayTarget) {
+        playQueued(Number(queuePlayTarget.dataset.queuePlay));
+        return;
+    }
+    var queueRemoveTarget = event.target.closest('[data-queue-remove]');
+    if (queueRemoveTarget) {
+        removeFromQueue(Number(queueRemoveTarget.dataset.queueRemove));
+        return;
+    }
+    if (event.target.closest('[data-queue-clear]')) {
+        clearQueue();
+        return;
+    }
+    if (event.target.closest('#advanced-toggle')) {
+        state.advancedOpen = !state.advancedOpen;
+        browseView();
+        return;
+    }
+    if (event.target.closest('#advanced-reset')) {
+        state.advancedFilters = normalizeAdvancedFilters(null);
+        storage.set('nexa-advanced-filters', state.advancedFilters);
+        browseView();
+        return;
+    }
     var actionTarget = event.target.closest('[data-action]');
     if (actionTarget) {
         var _a = actionTarget.dataset, action = _a.action, id = _a.id;
         if (action === 'play')
-            openPlayer(id);
+            playTitle(id);
         if (action === 'details')
             openDetails(id);
         if (action === 'toggle-list')
             toggleList(id);
+        if (action === 'add-queue')
+            addToQueue(id);
+        if (action === 'reset-advanced') {
+            state.advancedFilters = normalizeAdvancedFilters(null);
+            storage.set('nexa-advanced-filters', state.advancedFilters);
+            browseView();
+        }
+        if (action === 'clear-stats') {
+            if (actionTarget.dataset.confirm === '1') {
+                state.stats = normalizeStats(null);
+                saveStats();
+                actionTarget.removeAttribute('data-confirm');
+                actionTarget.textContent = 'Limpar estatísticas';
+                renderStatsView();
+                showToast('Estatísticas limpas.', 'success');
+            }
+            else {
+                actionTarget.dataset.confirm = '1';
+                actionTarget.textContent = 'Confirmar limpeza?';
+            }
+        }
         if (action === 'play-episode') {
             state.activeSeason = Number(actionTarget.dataset.season);
             state.activeEpisode = Number(actionTarget.dataset.episode);
@@ -2853,7 +3343,11 @@ document.addEventListener('keydown', function (event) {
     target === null || target === void 0 ? void 0 : target.focus();
     target === null || target === void 0 ? void 0 : target.scrollIntoView({ block: 'nearest', inline: 'center' });
 });
-document.getElementById('detail-play').addEventListener('click', function (event) { return openPlayer(event.currentTarget.dataset.id); });
+document.getElementById('queue-nav').addEventListener('click', openQueueDialog);
+document.getElementById('queue-dialog-close').addEventListener('click', function () { return document.getElementById('queue-dialog').close(); });
+document.getElementById('queue-dialog').addEventListener('close', function () { return document.body.classList.remove('modal-open'); });
+document.getElementById('detail-play').addEventListener('click', function (event) { return playTitle(event.currentTarget.dataset.id); });
+document.getElementById('detail-queue').addEventListener('click', function (event) { return addToQueue(event.currentTarget.dataset.id); });
 document.getElementById('detail-list').addEventListener('click', function (event) { return toggleList(event.currentTarget.dataset.id); });
 document.getElementById('detail-seen').addEventListener('click', function (event) { return toggleSeen(event.currentTarget.dataset.id); });
 document.getElementById('detail-like').addEventListener('click', function (event) { return toggleLike(event.currentTarget.dataset.id); });
@@ -2914,7 +3408,13 @@ document.getElementById('player-volume').addEventListener('input', function (eve
     videoPlayer.volume = Number(event.target.value);
     videoPlayer.muted = false;
 });
-document.getElementById('player-next').addEventListener('click', function () { return playNextEpisode(); });
+document.getElementById('player-next').addEventListener('click', function () {
+    if (!playNextEpisode())
+        playNextQueued();
+});
+document.getElementById('player-prev').addEventListener('click', playPreviousQueued);
+document.getElementById('player-queue').addEventListener('click', function () { return toggleQueuePanel(); });
+document.getElementById('queue-close').addEventListener('click', function () { return toggleQueuePanel(false); });
 document.getElementById('player-quality').addEventListener('click', function () {
     setQuality(state.quality === 'HD' ? '4K' : 'HD');
     showToast("Qualidade alterada para ".concat(state.quality), 'success');
@@ -3300,27 +3800,49 @@ videoPlayer.addEventListener('seeking', function () {
     };
     videoPlayer.addEventListener('seeked', release);
 });
-videoPlayer.addEventListener('play', function () { return setPlayerPlaying(true); });
-videoPlayer.addEventListener('pause', function () { return setPlayerPlaying(false); });
-videoPlayer.addEventListener('timeupdate', updatePlayerProgress);
+videoPlayer.addEventListener('play', function () {
+    setPlayerPlaying(true);
+    state.lastWatchTime = Number(videoPlayer.currentTime) || 0;
+    if (!state.playRecorded && state.activeVideo) {
+        state.playRecorded = true;
+        recordPlay(state.activeVideo.item, state.activeVideo.episodeIndex);
+    }
+});
+videoPlayer.addEventListener('pause', function () {
+    setPlayerPlaying(false);
+    flushWatchTime();
+});
+videoPlayer.addEventListener('timeupdate', function () {
+    updatePlayerProgress();
+    trackWatchTime();
+});
 videoPlayer.addEventListener('loadedmetadata', updatePlayerProgress);
 videoPlayer.addEventListener('ended', function () {
     var _a;
     saveProgress();
+    flushWatchTime();
     var active = state.activeVideo;
-    if (!active || active.episodeIndex === null || !((_a = active.item.seasons) === null || _a === void 0 ? void 0 : _a.length))
+    var hasEpisodes = active && active.episodeIndex !== null && ((_a = active.item.seasons) === null || _a === void 0 ? void 0 : _a.length);
+    if (hasEpisodes) {
+        var target = nextEpisodeTarget(active);
+        if (target) {
+            if (state.autoplay)
+                playNextEpisode(target);
+            else
+                showToast('Próximo episódio disponível. Use o botão de próximo episódio no player.', 'success');
+            return;
+        }
+    }
+    if (state.queueIndex >= 0 && state.queueIndex < state.queue.length - 1) {
+        if (state.autoplay) {
+            playNextQueued();
+            return;
+        }
+        showToast('Próximo título na fila. Use o botão de avançar no player.', 'success');
         return;
-    var target = nextEpisodeTarget(active);
-    if (!target) {
+    }
+    if (hasEpisodes)
         showToast('Você chegou ao último episódio disponível.', 'success');
-        return;
-    }
-    if (state.autoplay) {
-        playNextEpisode(target);
-    }
-    else {
-        showToast('Próximo episódio disponível. Use o botão de próximo episódio no player.', 'success');
-    }
 });
 document.getElementById('player-shell').addEventListener('mousemove', scheduleControlsHide);
 document.getElementById('player-shell').addEventListener('mouseleave', function () {
@@ -3346,6 +3868,13 @@ document.getElementById('search-clear').addEventListener('click', function () {
 document.addEventListener('change', function (event) {
     if (event.target.id === 'sort-select') {
         state.sort = event.target.value;
+        browseView();
+        return;
+    }
+    var advancedTarget = event.target.closest('[data-advanced]');
+    if (advancedTarget) {
+        state.advancedFilters[advancedTarget.dataset.advanced] = advancedTarget.value;
+        storage.set('nexa-advanced-filters', state.advancedFilters);
         browseView();
         return;
     }
@@ -3506,6 +4035,11 @@ document.addEventListener('keydown', function (event) {
                 openSubtitleMenu();
             else
                 closeSubtitleMenu();
+            return;
+        }
+        if (keyLower === 'q') {
+            event.preventDefault();
+            toggleQueuePanel();
             return;
         }
         if (keyLower === 'b' && playerBoostButton && !playerBoostButton.hidden) {
@@ -3825,7 +4359,11 @@ function loadProfileState(profile) {
     state.list = new Set(profile.list || []);
     state.liked = new Set(profile.liked || []);
     state.progress = __assign({}, (profile.progress || {}));
+    state.queue = (profile.queue || []).map(normalizeQueueEntry).filter(Boolean).slice(0, 200);
+    state.queueIndex = Number.isInteger(profile.queueIndex) ? Math.min(Math.max(profile.queueIndex, -1), state.queue.length - 1) : -1;
+    state.stats = loadStats();
     document.getElementById('list-count').textContent = state.list.size;
+    renderQueueUI();
 }
 function applyProfileSwitch(profile) {
     if (!profile)
@@ -4196,6 +4734,7 @@ applyNotificationsRead(storage.get('nexa-notifications-read', false));
 saveProfiles();
 updateProfileUI();
 document.getElementById('list-count').textContent = state.list.size;
+renderQueueUI();
 updateActiveNavigation();
 renderHome();
 restoreDriveLibrary();

@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="vendor/dialog-polyfill.css">
-  <link rel="stylesheet" href="styles.css?v=29">
+  <link rel="stylesheet" href="styles.css?v=30">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -56,6 +56,11 @@
     <symbol id="icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M12 17h.01"/></symbol>
     <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="icon-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6M9.9 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-4.1 4.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8"/></symbol>
+    <symbol id="icon-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="icon-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8Z"/></symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 20V10m5 10V4m5 16v-7m5 7V8"/></symbol>
+    <symbol id="icon-prev" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6M6 5v14"/></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13"/></symbol>
   </svg>
 
   <div class="loading-screen" id="loading-screen" aria-hidden="true">
@@ -95,6 +100,10 @@
           <svg><use href="#icon-bookmark"></use></svg><span>Minha lista</span>
           <span class="nav-count" id="list-count">0</span>
         </button>
+        <button class="nav-item" id="queue-nav" aria-haspopup="dialog">
+          <svg><use href="#icon-list"></use></svg><span>Fila de reprodução</span>
+          <span class="nav-count" id="queue-nav-count" hidden>0</span>
+        </button>
         <button class="nav-item" id="drive-nav" aria-haspopup="dialog">
           <svg><use href="#icon-download"></use></svg><span>Google Drive</span>
           <span class="nav-count" id="drive-count" hidden>0</span>
@@ -110,6 +119,9 @@
         </button>
         <button class="nav-item" data-view="novidades">
           <svg><use href="#icon-plus"></use></svg><span>Novidades</span>
+        </button>
+        <button class="nav-item" data-view="estatisticas">
+          <svg><use href="#icon-chart"></use></svg><span>Estatísticas</span>
         </button>
       </nav>
 
@@ -213,6 +225,7 @@
           <div class="detail-actions">
             <button class="button button-primary" id="detail-play"><svg><use href="#icon-play"></use></svg><span>Assistir</span></button>
             <button class="button button-secondary" id="detail-list"><svg><use href="#icon-plus"></use></svg><span>Adicionar à lista</span></button>
+            <button class="button button-secondary" id="detail-queue" type="button"><svg><use href="#icon-list"></use></svg><span>Adicionar à fila</span></button>
             <button class="button button-secondary" id="detail-seen" type="button"><svg><use href="#icon-eye"></use></svg><span>Marcar como visto</span></button>
             <button class="button button-icon" id="detail-like" aria-label="Gostei"><svg><use href="#icon-thumbs-up"></use></svg></button>
             <button class="button button-icon" id="detail-share" aria-label="Compartilhar"><svg><use href="#icon-share"></use></svg></button>
@@ -267,6 +280,7 @@
         </div>
         <div class="control-bar">
           <button class="player-icon" id="player-play" aria-label="Reproduzir" aria-keyshortcuts="Space K" title="Reproduzir ou pausar (Espaço ou K)"><svg class="play-icon"><use href="#icon-play"></use></svg><svg class="pause-icon"><use href="#icon-pause"></use></svg></button>
+          <button class="player-icon" id="player-prev" aria-label="Título anterior da fila" title="Título anterior da fila" hidden><svg><use href="#icon-prev"></use></svg></button>
           <button class="player-icon" id="player-back" aria-label="Voltar 10 segundos" aria-keyshortcuts="J" title="Voltar 10s (J)"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
           <button class="player-icon" id="player-forward" aria-label="Avançar 10 segundos" aria-keyshortcuts="L" title="Avançar 10s (L)"><span class="skip-text">10</span><svg><use href="#icon-chevron"></use></svg></button>
           <div class="volume-control">
@@ -276,6 +290,7 @@
           <span class="player-time"><span id="player-current">0:00</span> / <span id="player-duration">0:00</span></span>
           <span class="control-spacer"></span>
           <button class="player-icon" id="player-next" aria-label="Próximo episódio" hidden><svg><use href="#icon-chevron"></use></svg></button>
+          <button class="player-icon queue-button" id="player-queue" aria-label="Fila de reprodução" aria-expanded="false" aria-keyshortcuts="Q" title="Fila de reprodução (Q)"><svg><use href="#icon-list"></use></svg><span class="queue-count" id="player-queue-count" hidden>0</span></button>
           <button class="player-icon subtitle-button" id="player-subtitles" aria-label="Legendas" aria-expanded="false" aria-keyshortcuts="C" title="Legendas (C)"><svg><use href="#icon-cc"></use></svg></button>
           <button class="player-icon boost-button" id="player-boost" aria-label="Amplificar áudio" aria-keyshortcuts="B" title="Amplificar áudio (B)" hidden><svg><use href="#icon-volume"></use></svg><span id="player-boost-label">1×</span></button>
           <button class="player-icon speed-button" id="player-speed" aria-label="Velocidade de reprodução" title="Velocidade de reprodução"><span id="player-speed-label">1x</span></button>
@@ -291,6 +306,11 @@
         <button class="subtitle-upload" id="subtitle-search-open" type="button" hidden><svg><use href="#icon-search"></use></svg><span>Buscar legendas online</span></button>
         <button class="subtitle-upload" id="subtitle-save-hd" type="button" hidden><svg><use href="#icon-download"></use></svg><span>Salvar legenda no HD</span></button>
         <input id="subtitle-file" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" hidden>
+      </div>
+      <div class="queue-panel" id="queue-panel" hidden>
+        <div class="subtitle-menu-head"><strong>Fila de reprodução</strong><button id="queue-close" type="button" aria-label="Fechar fila"><svg><use href="#icon-close"></use></svg></button></div>
+        <div class="queue-list" id="queue-list"></div>
+        <button class="subtitle-upload" id="queue-clear" type="button" data-queue-clear><svg><use href="#icon-trash"></use></svg><span>Limpar fila</span></button>
       </div>
     </div>
   </dialog>
@@ -498,10 +518,28 @@
           <li><kbd>F</kbd><span>Tela cheia</span></li>
           <li><kbd>C</kbd><span>Legendas</span></li>
           <li><kbd>B</kbd><span>Amplificar áudio (quando disponível)</span></li>
+          <li><kbd>Q</kbd><span>Abrir ou fechar a fila de reprodução</span></li>
           <li><kbd>Esc</kbd><span>Fechar player, menu ou janela</span></li>
           <li><kbd>Ctrl</kbd>+<kbd>K</kbd> / <kbd>/</kbd><span>Buscar</span></li>
           <li><kbd>?</kbd><span>Mostrar esta ajuda</span></li>
         </ul>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="details-dialog settings-dialog queue-dialog" id="queue-dialog" aria-labelledby="queue-dialog-title">
+    <div class="dialog-scroll">
+      <button class="dialog-close" id="queue-dialog-close" aria-label="Fechar fila">
+        <svg><use href="#icon-close"></use></svg>
+      </button>
+      <div class="settings-content">
+        <p class="eyebrow">Reprodução</p>
+        <h1 id="queue-dialog-title">Fila de reprodução</h1>
+        <p class="settings-intro">Os títulos adicionados aparecem aqui. Use o play para assistir ou remova os que não quiser.</p>
+        <div class="queue-list queue-dialog-list" id="queue-dialog-list"></div>
+        <div class="drive-actions">
+          <button class="button button-secondary" id="queue-dialog-clear" type="button" data-queue-clear>Limpar fila</button>
+        </div>
       </div>
     </div>
   </dialog>
@@ -515,6 +553,6 @@
   <script src="vendor/element-closest.js"></script>
   <script src="vendor/dialog-polyfill.js"></script>
   <script src="vendor/compat.js"></script>
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
