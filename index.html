@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="vendor/dialog-polyfill.css">
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -471,7 +471,7 @@
             </label>
           </div>
           <div class="settings-row profile-kids-row">
-            <div><strong>Perfil infantil</strong><small>Mostra apenas títulos com classificação até 12+. O PIN é pedido para sair do perfil.</small></div>
+            <div><strong>Perfil infantil</strong><small>Mostra apenas títulos com classificação até 12+. O PIN é pedido para sair do perfil e é apenas uma proteção visual neste navegador, não uma senha de segurança.</small></div>
             <button class="switch" id="profile-kids-toggle" type="button" role="switch" aria-checked="false" aria-label="Perfil infantil"><span></span></button>
           </div>
           <div class="profile-form-actions">
@@ -545,7 +545,9 @@
   </dialog>
 
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <div class="sr-only" id="view-announcer" aria-live="polite" aria-atomic="true"></div>
 
+  <script src="nexa-version.js"></script>
   <script src="vendor/core-js-bundle.min.js"></script>
   <script src="vendor/promise-polyfill.min.js"></script>
   <script src="vendor/fetch.umd.js"></script>
@@ -553,6 +555,6 @@
   <script src="vendor/element-closest.js"></script>
   <script src="vendor/dialog-polyfill.js"></script>
   <script src="vendor/compat.js"></script>
-  <script src="app.js?v=30"></script>
+  <script src="app.js"></script>
 </body>
 </html>

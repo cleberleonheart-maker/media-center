@@ -9,10 +9,13 @@ virtualConsole.on('jsdomError', (e) => errors.push('jsdom: ' + (e.stack || e.mes
 
 const appCode = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const serviceWorkerCode = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
+const versionCode = fs.readFileSync(path.join(root, 'nexa-version.js'), 'utf8');
 const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const version = (versionCode.match(/NEXA_VERSION = '([^']+)'/) || [])[1];
 const html = rawHtml
   .replace(/<script src="vendor\/[^"]+"><\/script>/g, '')
-  .replace(/<script src="app\.js\?v=\d+"><\/script>/g, '');
+  .replace(/<script src="nexa-version\.js"><\/script>/g, '')
+  .replace(/<script src="app\.js"><\/script>/g, '');
 
 function check(name, fn) {
   try {
@@ -25,7 +28,8 @@ function check(name, fn) {
   }
 }
 
-check('version bumped to v30', () => rawHtml.includes('styles.css?v=30') && rawHtml.includes('app.js?v=30') && serviceWorkerCode.includes('nexa-shell-v30'));
+check('single source version', () => !!version && serviceWorkerCode.includes("'nexa-shell-' + NEXA_VERSION") && rawHtml.includes('<script src="nexa-version.js"></script>') && !rawHtml.includes('?v='));
+check('app shell uses unversioned assets', () => ["'./app.js'", "'./styles.css'", "'./nexa-version.js'"].every((marker) => serviceWorkerCode.includes(marker)));
 check('new features present in app.js', () => ['nexa-stats', 'data-queue-play', 'data-advanced', 'renderStatsView'].every((marker) => appCode.includes(marker)));
 
 const dom = new JSDOM(html, { url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole });
@@ -46,7 +50,9 @@ window.HTMLDialogElement.prototype.close = function () {
   }
 };
 
-for (const file of ['vendor/compat.js', 'app.js']) {
+check('view announcer exists', () => !!window.document.getElementById('view-announcer'));
+
+for (const file of ['nexa-version.js', 'vendor/compat.js', 'app.js']) {
   try { window.eval(fs.readFileSync(path.join(root, file), 'utf8')); }
   catch (e) { errors.push('eval ' + file + ': ' + e.stack); }
 }

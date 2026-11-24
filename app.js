@@ -431,6 +431,7 @@ var defaultProgress = {
     'herois-do-quarteirao': { percent: 19, seconds: 510 },
     'ultimo-trem': { percent: 82, seconds: 5520 }
 };
+var storageWarningShown = false;
 var storage = {
     get: function (key, fallback) {
         try {
@@ -446,6 +447,10 @@ var storage = {
             localStorage.setItem(key, JSON.stringify(value));
         }
         catch (_a) {
+            if (!storageWarningShown && typeof showToast === 'function') {
+                storageWarningShown = true;
+                showToast('O armazenamento do navegador está cheio. Alguns dados podem não ser salvos.', 'error');
+            }
             return false;
         }
         return true;
@@ -476,7 +481,21 @@ function normalizeStats(raw) {
             seconds: Math.max(0, Math.floor(Number(entry.seconds) || 0))
         };
     }) : [];
-    return { plays: normalizeCountMap(source.plays), seconds: normalizeCountMap(source.seconds), history: history, current: null };
+    var titles = {};
+    if (source.titles && typeof source.titles === 'object' && !Array.isArray(source.titles)) {
+        Object.keys(source.titles).slice(0, 500).forEach(function (key) {
+            var entry = source.titles[key];
+            if (!entry || typeof entry !== 'object')
+                return;
+            titles[String(key).slice(0, 128)] = {
+                title: String(entry.title || key).slice(0, 200),
+                poster: String(entry.poster || ''),
+                type: String(entry.type || 'filme'),
+                year: entry.year
+            };
+        });
+    }
+    return { plays: normalizeCountMap(source.plays), seconds: normalizeCountMap(source.seconds), history: history, titles: titles, current: null };
 }
 function loadStats() {
     var all = storage.get(STATS_KEY, {});
@@ -494,6 +513,7 @@ function saveStats() {
     var key = profile && profile.id ? profile.id : 'principal';
     var clean = normalizeStats(state.stats);
     clean.current = state.stats ? state.stats.current : null;
+    clean.titles = state.stats && state.stats.titles ? state.stats.titles : {};
     all[key] = clean;
     storage.set(STATS_KEY, all);
 }
@@ -841,6 +861,9 @@ function recordPlay(item, episodeIndex) {
         return;
     flushWatchTime();
     state.stats.plays[item.id] = (Number(state.stats.plays[item.id]) || 0) + 1;
+    state.stats.titles[item.id] = {
+        title: item.title, poster: item.poster || fallbackArtwork, type: item.type, year: item.year
+    };
     state.stats.history.unshift({
         id: item.id,
         title: item.title,
@@ -859,9 +882,9 @@ function trackWatchTime() {
     var time = Number(videoPlayer.currentTime) || 0;
     var delta = time - Number(state.lastWatchTime || 0);
     state.lastWatchTime = time;
-    if (delta <= 0 || delta >= 2)
+    if (delta <= 0)
         return;
-    state.watchSeconds += delta;
+    state.watchSeconds += Math.min(delta, 5);
     if (state.watchSeconds >= 10)
         flushWatchTime();
 }
@@ -895,7 +918,11 @@ function formatWatchTime(totalSeconds) {
 }
 function topWatchedItems(limit) {
     var items = Object.keys(state.stats.plays).map(function (id) {
-        var item = getItem(id);
+        var snapshot = state.stats.titles[id];
+        var item = getItem(id) || (snapshot ? {
+            id: id, title: snapshot.title, poster: snapshot.poster,
+            type: snapshot.type, year: snapshot.year
+        } : null);
         return { id: id, item: item, plays: Number(state.stats.plays[id]) || 0, seconds: Number(state.stats.seconds[id]) || 0 };
     }).filter(function (entry) { return entry.plays > 0 && entry.item; });
     items.sort(function (a, b) { return b.plays - a.plays || b.seconds - a.seconds; });
@@ -939,6 +966,22 @@ var icons = {
     trash: 'icon-trash'
 };
 var mainContent = document.getElementById('main-content');
+function setMainContent(html) {
+    var active = document.activeElement;
+    var focusKey = '';
+    if (active && active !== document.body && mainContent.contains(active)) {
+        if (active.id)
+            focusKey = '#' + active.id;
+        else if (active.dataset && active.dataset.action && /^[a-z-]+$/.test(active.dataset.action))
+            focusKey = '[data-action="' + active.dataset.action + '"]';
+    }
+    mainContent.innerHTML = html;
+    if (focusKey) {
+        var target = mainContent.querySelector(focusKey);
+        if (target && target.focus)
+            target.focus();
+    }
+}
 var detailsDialog = document.getElementById('details-dialog');
 var playerDialog = document.getElementById('player-dialog');
 var videoPlayer = document.getElementById('video-player');
@@ -2069,6 +2112,12 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+function safeCssUrl(value) {
+    var url = String(value || '');
+    if (!/^(https?:\/\/|data:image\/|blob:|\/|\.\/)/i.test(url))
+        return fallbackArtwork;
+    return url.replace(/["'()\\\s]/g, '');
+}
 function getItem(id) {
     return catalog.find(function (item) { return item.id === id; });
 }
@@ -2148,13 +2197,13 @@ function posterCard(item, options) {
     var isTop = options.top;
     var badge = item.original ? '<span class="card-badge original">Original</span>' : item.new ? '<span class="card-badge">Novo</span>' : '';
     var showProgress = progress && progress.percent > 0 && progress.percent < 100;
-    var progressBar = showProgress ? "<span class=\"card-progress\" role=\"progressbar\" aria-label=\"Progresso de ".concat(escapeHtml(item.title), "\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"").concat(progress.percent, "\"><span aria-hidden=\"true\" style=\"width:").concat(progress.percent, "%\"></span></span>") : '';
-    var poster = "\n    <div class=\"poster-wrap\">\n      <img src=\"".concat(escapeHtml(item.poster), "\" alt=\"P\u00F4ster de ").concat(escapeHtml(item.title), "\" loading=\"lazy\">\n      ").concat(badge, "\n      <button class=\"poster-open\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\"></button>\n      <div class=\"card-overlay\">\n        <button class=\"card-play\" type=\"button\" data-action=\"play\" data-id=\"").concat(item.id, "\" aria-label=\"Assistir ").concat(escapeHtml(item.title), "\">").concat(icon('play'), "</button>\n        <button class=\"card-info\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\">").concat(icon('info'), "</button>\n        <button class=\"card-list ").concat(state.list.has(item.id) ? 'in-list' : '', "\" type=\"button\" data-action=\"toggle-list\" data-id=\"").concat(item.id, "\" aria-label=\"").concat(state.list.has(item.id) ? 'Remover' : 'Adicionar', " ").concat(escapeHtml(item.title), " ").concat(state.list.has(item.id) ? 'da' : 'à', " lista\">").concat(state.list.has(item.id) ? icon('check') : icon('plus'), "</button>\n        <button class=\"card-queue\" type=\"button\" data-action=\"add-queue\" data-id=\"").concat(item.id, "\" aria-label=\"Adicionar ").concat(escapeHtml(item.title), " \u00E0 fila\">").concat(icon('list'), "</button>\n      </div>\n      ").concat(progressBar, "\n    </div>");
+    var progressBar = showProgress ? "<span class=\"card-progress\" role=\"progressbar\" aria-label=\"Progresso de ".concat(escapeHtml(item.title), "\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"").concat(escapeHtml(progress.percent), "\"><span aria-hidden=\"true\" style=\"width:").concat(escapeHtml(progress.percent), "%\"></span></span>") : '';
+    var poster = "\n    <div class=\"poster-wrap\">\n      <img src=\"".concat(escapeHtml(item.poster), "\" alt=\"P\u00F4ster de ").concat(escapeHtml(item.title), "\" loading=\"lazy\">\n      ").concat(badge, "\n      <button class=\"poster-open\" type=\"button\" data-action=\"details\" data-id=\"").concat(escapeHtml(item.id), "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\"></button>\n      <div class=\"card-overlay\">\n        <button class=\"card-play\" type=\"button\" data-action=\"play\" data-id=\"").concat(escapeHtml(item.id), "\" aria-label=\"Assistir ").concat(escapeHtml(item.title), "\">").concat(icon('play'), "</button>\n        <button class=\"card-info\" type=\"button\" data-action=\"details\" data-id=\"").concat(escapeHtml(item.id), "\" aria-label=\"Ver detalhes de ").concat(escapeHtml(item.title), "\">").concat(icon('info'), "</button>\n        <button class=\"card-list ").concat(state.list.has(item.id) ? 'in-list' : '', "\" type=\"button\" data-action=\"toggle-list\" data-id=\"").concat(escapeHtml(item.id), "\" aria-label=\"").concat(state.list.has(item.id) ? 'Remover' : 'Adicionar', " ").concat(escapeHtml(item.title), " ").concat(state.list.has(item.id) ? 'da' : 'à', " lista\">").concat(state.list.has(item.id) ? icon('check') : icon('plus'), "</button>\n        <button class=\"card-queue\" type=\"button\" data-action=\"add-queue\" data-id=\"").concat(escapeHtml(item.id), "\" aria-label=\"Adicionar ").concat(escapeHtml(item.title), " \u00E0 fila\">").concat(icon('list'), "</button>\n      </div>\n      ").concat(progressBar, "\n    </div>");
     var inner = "\n    ".concat(poster, "\n    <h3 class=\"poster-title\">").concat(escapeHtml(item.title), "</h3>\n    <div class=\"poster-meta\"><span class=\"match-score\">").concat(escapeHtml(item.match), "%</span><span>\u2022</span><span>").concat(escapeHtml(item.year), "</span><span>\u2022</span><span>").concat(escapeHtml(typeLabel[item.type]), "</span></div>");
     if (isTop) {
-        return "<article class=\"media-card rank-wrap\" data-id=\"".concat(item.id, "\"><span class=\"rank-number\">").concat(options.rank, "</span><div class=\"poster-button\">").concat(inner, "</div></article>");
+        return "<article class=\"media-card rank-wrap\" data-id=\"".concat(escapeHtml(item.id), "\"><span class=\"rank-number\">").concat(options.rank, "</span><div class=\"poster-button\">").concat(inner, "</div></article>");
     }
-    return "<article class=\"media-card\" data-id=\"".concat(item.id, "\"><div class=\"poster-button\">").concat(inner, "</div></article>");
+    return "<article class=\"media-card\" data-id=\"".concat(escapeHtml(item.id), "\"><div class=\"poster-button\">").concat(inner, "</div></article>");
 }
 function sectionRow(title, items, options) {
     if (options === void 0) { options = {}; }
@@ -2164,23 +2213,31 @@ function sectionRow(title, items, options) {
     return "\n    <section class=\"content-section\" data-section>\n      <div class=\"section-heading\">\n        <div><h2>".concat(title, "</h2>").concat(options.subtitle ? "<p>".concat(options.subtitle, "</p>") : '', "</div>\n        ").concat(options.link ? "<button class=\"section-link\" type=\"button\" data-view-link=\"".concat(options.link.view, "\">Explorar tudo ").concat(icon('chevron'), "</button>") : '', "\n      </div>\n      <div class=\"carousel\" role=\"group\" aria-roledescription=\"carrossel\" aria-label=\"").concat(escapeHtml(title), "\"><div class=\"media-row\">").concat(cards, "</div></div>\n    </section>");
 }
 function homeHero(item) {
-    return "\n    <section class=\"hero\" aria-labelledby=\"hero-title\">\n      <div class=\"hero-backdrop\" style=\"background-image:url('".concat(escapeHtml(item.backdrop), "')\"></div>\n      <div class=\"hero-content\">\n        <span class=\"hero-badge\">").concat(item.original ? 'NEXA Original' : 'Em destaque', "</span>\n        <h1 id=\"hero-title\">").concat(escapeHtml(item.title), "</h1>\n        <div class=\"hero-meta\">\n          <span class=\"match-score\">").concat(escapeHtml(item.match), "% de escolha</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.year), "</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.maturity), "</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.duration), "</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.genres.join(' • ')), "</span>\n        </div>\n        <p class=\"hero-description\">").concat(escapeHtml(item.description), "</p>\n        <div class=\"hero-actions\">\n          <button class=\"button button-red\" type=\"button\" data-action=\"play\" data-id=\"").concat(item.id, "\">").concat(icon('play'), " Assistir</button>\n          <button class=\"button button-ghost\" type=\"button\" data-action=\"details\" data-id=\"").concat(item.id, "\">").concat(icon('info'), " Mais informa\u00E7\u00F5es</button>\n        </div>\n      </div>\n    </section>");
+    return "\n    <section class=\"hero\" aria-labelledby=\"hero-title\">\n      <div class=\"hero-backdrop\" style=\"background-image:url('".concat(safeCssUrl(item.backdrop), "')\"></div>\n      <div class=\"hero-content\">\n        <span class=\"hero-badge\">").concat(item.original ? 'NEXA Original' : 'Em destaque', "</span>\n        <h1 id=\"hero-title\">").concat(escapeHtml(item.title), "</h1>\n        <div class=\"hero-meta\">\n          <span class=\"match-score\">").concat(escapeHtml(item.match), "% de escolha</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.year), "</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.maturity), "</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.duration), "</span>\n          <span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.genres.join(' • ')), "</span>\n        </div>\n        <p class=\"hero-description\">").concat(escapeHtml(item.description), "</p>\n        <div class=\"hero-actions\">\n          <button class=\"button button-red\" type=\"button\" data-action=\"play\" data-id=\"").concat(escapeHtml(item.id), "\">").concat(icon('play'), " Assistir</button>\n          <button class=\"button button-ghost\" type=\"button\" data-action=\"details\" data-id=\"").concat(escapeHtml(item.id), "\">").concat(icon('info'), " Mais informa\u00E7\u00F5es</button>\n        </div>\n      </div>\n    </section>");
 }
 function renderHome() {
     var visible = currentCatalog();
-    var continueItems = visible.filter(function (item) { return isItemInProgress(item); }).sort(function (a, b) { var _a, _b; return (((_a = state.progress[b.id]) === null || _a === void 0 ? void 0 : _a.percent) || 0) - (((_b = state.progress[a.id]) === null || _b === void 0 ? void 0 : _b.percent) || 0); });
-    var trending = visible.filter(function (item) { return item.trending; });
-    var top = visible.filter(function (item) { return item.top; }).slice(0, 10);
-    var originals = visible.filter(function (item) { return item.original; });
-    var movies = visible.filter(function (item) { return item.type === 'filme'; }).sort(function (a, b) { return Number(Boolean(b.drive)) - Number(Boolean(a.drive)); });
-    var series = visible.filter(function (item) { return item.type === 'serie'; }).sort(function (a, b) { return Number(Boolean(b.drive)) - Number(Boolean(a.drive)); });
-    var documentaries = visible.filter(function (item) { return item.type === 'documentario'; });
-    var fresh = visible.filter(function (item) { return item.new; });
-    var drive = visible.filter(function (item) { return item.drive; });
-    var local = visible.filter(function (item) { return item.local; });
+    var continueItems = [], trending = [], top = [], originals = [], movies = [];
+    var series = [], documentaries = [], fresh = [], drive = [], local = [];
+    visible.forEach(function (item) {
+        if (isItemInProgress(item)) continueItems.push(item);
+        if (item.trending) trending.push(item);
+        if (item.top) top.push(item);
+        if (item.original) originals.push(item);
+        if (item.type === 'filme') movies.push(item);
+        if (item.type === 'serie') series.push(item);
+        if (item.type === 'documentario') documentaries.push(item);
+        if (item.new) fresh.push(item);
+        if (item.drive) drive.push(item);
+        if (item.local) local.push(item);
+    });
+    continueItems.sort(function (a, b) { var _a, _b; return (((_a = state.progress[b.id]) === null || _a === void 0 ? void 0 : _a.percent) || 0) - (((_b = state.progress[a.id]) === null || _b === void 0 ? void 0 : _b.percent) || 0); });
+    top = top.slice(0, 10);
+    movies.sort(function (a, b) { return Number(Boolean(b.drive)) - Number(Boolean(a.drive)); });
+    series.sort(function (a, b) { return Number(Boolean(b.drive)) - Number(Boolean(a.drive)); });
     var hero = visible[0];
     var empty = "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon('film'), "</span><h2>Nenhum t\u00EDtulo dispon\u00EDvel</h2><p>N\u00E3o h\u00E1 t\u00EDtulos adequados para este perfil no momento.</p></div></div>");
-    mainContent.innerHTML = "\n    <div class=\"content-view\">\n      ".concat(hero ? homeHero(hero) : '', "\n      <div class=\"content-sections\">\n        ").concat(visible.length ? "\n          ".concat(sectionRow('Continue assistindo', continueItems, { subtitle: 'Retome de onde parou' }), "\n          ").concat(sectionRow('Do seu Google Drive', drive, { subtitle: 'Filmes e séries da sua pasta conectada' }), "\n          ").concat(sectionRow('Do seu HD', local, { subtitle: 'Filmes e séries da biblioteca local' }), "\n          ").concat(sectionRow('Em alta agora', trending, { subtitle: 'O que todo mundo está assistindo', link: { view: 'filmes' } }), "\n          ").concat(sectionRow('Top 10 hoje', top, { top: true }), "\n          ").concat(sectionRow('Originais NEXA', originals, { subtitle: 'Histórias exclusivas para assistir' }), "\n          ").concat(sectionRow('Filmes populares', movies), "\n          ").concat(sectionRow('Séries que você precisa ver', series), "\n          ").concat(sectionRow('Documentários que inspiram', documentaries), "\n          ").concat(sectionRow('Novidades', fresh), "\n        ") : empty, "\n      </div>\n    </div>");
+    setMainContent("\n    <div class=\"content-view\">\n      ".concat(hero ? homeHero(hero) : '', "\n      <div class=\"content-sections\">\n        ").concat(visible.length ? "\n          ".concat(sectionRow('Continue assistindo', continueItems, { subtitle: 'Retome de onde parou' }), "\n          ").concat(sectionRow('Do seu Google Drive', drive, { subtitle: 'Filmes e séries da sua pasta conectada' }), "\n          ").concat(sectionRow('Do seu HD', local, { subtitle: 'Filmes e séries da biblioteca local' }), "\n          ").concat(sectionRow('Em alta agora', trending, { subtitle: 'O que todo mundo está assistindo', link: { view: 'filmes' } }), "\n          ").concat(sectionRow('Top 10 hoje', top, { top: true }), "\n          ").concat(sectionRow('Originais NEXA', originals, { subtitle: 'Histórias exclusivas para assistir' }), "\n          ").concat(sectionRow('Filmes populares', movies), "\n          ").concat(sectionRow('Séries que você precisa ver', series), "\n          ").concat(sectionRow('Documentários que inspiram', documentaries), "\n          ").concat(sectionRow('Novidades', fresh), "\n        ") : empty, "\n      </div>\n    </div>"));
 }
 function currentMusicAlbums() {
     var _a;
@@ -2189,7 +2246,7 @@ function currentMusicAlbums() {
 function albumCard(album) {
     var _a;
     var tracks = ((_a = album.tracks) === null || _a === void 0 ? void 0 : _a.length) || 0;
-    return "\n    <article class=\"album-card\">\n      <button class=\"album-cover-button\" type=\"button\" data-album=\"".concat(album.id, "\" aria-label=\"Abrir \u00E1lbum ").concat(escapeHtml(album.title), "\">\n        <img src=\"").concat(escapeHtml(album.cover || fallbackArtwork), "\" alt=\"Capa de ").concat(escapeHtml(album.title), "\" loading=\"lazy\">\n        <span class=\"album-play\">").concat(icon('play'), "</span>\n      </button>\n      <strong class=\"album-title\">").concat(escapeHtml(album.title), "</strong>\n      <small class=\"album-meta\">").concat(escapeHtml(album.artist || 'Vários artistas'), " \u2022 ").concat(tracks, " faixa").concat(tracks === 1 ? '' : 's', "</small>\n    </article>");
+    return "\n    <article class=\"album-card\">\n      <button class=\"album-cover-button\" type=\"button\" data-album=\"".concat(escapeHtml(album.id), "\" aria-label=\"Abrir \u00E1lbum ").concat(escapeHtml(album.title), "\">\n        <img src=\"").concat(escapeHtml(album.cover || fallbackArtwork), "\" alt=\"Capa de ").concat(escapeHtml(album.title), "\" loading=\"lazy\">\n        <span class=\"album-play\">").concat(icon('play'), "</span>\n      </button>\n      <strong class=\"album-title\">").concat(escapeHtml(album.title), "</strong>\n      <small class=\"album-meta\">").concat(escapeHtml(album.artist || 'Vários artistas'), " \u2022 ").concat(tracks, " faixa").concat(tracks === 1 ? '' : 's', "</small>\n    </article>");
 }
 function renderMusicView() {
     state.view = 'musica';
@@ -2210,7 +2267,7 @@ function renderAlbumView(album) {
     state.view = 'musica';
     updateActiveNavigation();
     var trackIndex = state.activeTrackIndex;
-    mainContent.innerHTML = "\n    <section class=\"section-view album-view\">\n      <button class=\"back-link\" type=\"button\" data-album-back>".concat(icon('chevron'), " Todos os \u00E1lbuns</button>\n      <header class=\"album-header\">\n        <img class=\"album-detail-cover\" src=\"").concat(escapeHtml(album.cover || fallbackArtwork), "\" alt=\"Capa de ").concat(escapeHtml(album.title), "\">\n        <div>\n          <p class=\"eyebrow\">\u00C1lbum</p>\n          <h1>").concat(escapeHtml(album.title), "</h1>\n          <p class=\"album-detail-meta\">").concat(escapeHtml(album.artist || 'Vários artistas')).concat(album.year ? " \u2022 ".concat(album.year) : '', " \u2022 ").concat(((_a = album.tracks) === null || _a === void 0 ? void 0 : _a.length) || 0, " faixa").concat(((_b = album.tracks) === null || _b === void 0 ? void 0 : _b.length) === 1 ? '' : 's', "</p>\n          <button class=\"button button-red\" type=\"button\" data-play-album=\"").concat(album.id, "\">").concat(icon('play'), " Tocar \u00E1lbum</button>\n        </div>\n      </header>\n      <ol class=\"track-list\">\n        ").concat((album.tracks || []).map(function (track, index) { return "\n          <li class=\"".concat(index === trackIndex ? 'playing' : '', "\">\n            <button type=\"button\" data-track=\"").concat(album.id, "\" data-track-index=\"").concat(index, "\">\n              <span class=\"track-number\">").concat(track.number || index + 1, "</span>\n              <span class=\"track-copy\"><strong>").concat(escapeHtml(track.title), "</strong><small>").concat(escapeHtml(track.artist || album.artist || ''), "</small></span>\n              <span class=\"track-action\">").concat(index === trackIndex ? icon('volume') : icon('play'), "</span>\n            </button>\n          </li>"); }).join(''), "\n      </ol>\n    </section>");
+    setMainContent("\n    <section class=\"section-view album-view\">\n      <button class=\"back-link\" type=\"button\" data-album-back>".concat(icon('chevron'), " Todos os \u00E1lbuns</button>\n      <header class=\"album-header\">\n        <img class=\"album-detail-cover\" src=\"").concat(escapeHtml(album.cover || fallbackArtwork), "\" alt=\"Capa de ").concat(escapeHtml(album.title), "\">\n        <div>\n          <p class=\"eyebrow\">\u00C1lbum</p>\n          <h1>").concat(escapeHtml(album.title), "</h1>\n          <p class=\"album-detail-meta\">").concat(escapeHtml(album.artist || 'Vários artistas')).concat(album.year ? " \u2022 ".concat(album.year) : '', " \u2022 ").concat(((_a = album.tracks) === null || _a === void 0 ? void 0 : _a.length) || 0, " faixa").concat(((_b = album.tracks) === null || _b === void 0 ? void 0 : _b.length) === 1 ? '' : 's', "</p>\n          <button class=\"button button-red\" type=\"button\" data-play-album=\"").concat(album.id, "\">").concat(icon('play'), " Tocar \u00E1lbum</button>\n        </div>\n      </header>\n      <ol class=\"track-list\">\n        ").concat((album.tracks || []).map(function (track, index) { return "\n          <li class=\"".concat(index === trackIndex ? 'playing' : '', "\">\n            <button type=\"button\" data-track=\"").concat(album.id, "\" data-track-index=\"").concat(index, "\">\n              <span class=\"track-number\">").concat(track.number || index + 1, "</span>\n              <span class=\"track-copy\"><strong>").concat(escapeHtml(track.title), "</strong><small>").concat(escapeHtml(track.artist || album.artist || ''), "</small></span>\n              <span class=\"track-action\">").concat(index === trackIndex ? icon('volume') : icon('play'), "</span>\n            </button>\n          </li>"); }).join(''), "\n      </ol>\n    </section>"));
     window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function showMusicBar(track, album) {
@@ -2286,11 +2343,12 @@ function renderStatsView() {
     }).join(''), "</ol>") : '<p class="stats-empty">Reproduza um título para começar a registrar estatísticas.</p>';
     var historyHtml = stats.history.length ? "<ul class=\"history-list\">".concat(stats.history.slice(0, 12).map(function (entry) {
         var item = getItem(entry.id);
-        var title = item ? item.title : entry.title || entry.id;
+        var snapshot = state.stats.titles[entry.id];
+        var title = item ? item.title : entry.title || (snapshot && snapshot.title) || entry.id;
         var episode = entry.episode !== null && item && item.seasons ? " \u00B7 Epis\u00F3dio ".concat(entry.episode + 1) : '';
         return "<li><span class=\"history-icon\">".concat(icon('play'), "</span><span class=\"history-copy\"><strong>").concat(escapeHtml(title), "</strong><small>").concat(formatStatDate(entry.at), episode, " \u00B7 ").concat(formatWatchTime(entry.seconds), "</small></span></li>");
     }).join(''), "</ul>") : '<p class="stats-empty">Nenhuma reprodução registrada ainda.</p>';
-    mainContent.innerHTML = "\n    <section class=\"section-view stats-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">Seu perfil</p><h1>Estat\u00EDsticas</h1><p>Veja o que voc\u00EA mais assistiu neste perfil. Os dados ficam salvos somente neste navegador.</p></div></header>\n      <div class=\"stats-summary\">\n        <div class=\"stat-card\"><span>Reprodu\u00E7\u00F5es</span><strong>".concat(plays, "</strong><small>títulos iniciados</small></div>\n        <div class=\"stat-card\"><span>Tempo assistido</span><strong>").concat(formatWatchTime(seconds), "</strong><small>somando todas as sess\u00F5es</small></div>\n        <div class=\"stat-card\"><span>T\u00EDtulos distintos</span><strong>").concat(Object.keys(titles).length, "</strong><small>filmes e s\u00E9ries assistidos</small></div>\n        <div class=\"stat-card\"><span>Conclu\u00EDdos</span><strong>").concat(completed, "</strong><small>marcados como vistos</small></div>\n      </div>\n      <section class=\"stats-block\">\n        <div class=\"section-heading compact\"><h2>Mais assistidos</h2></div>\n        ").concat(topHtml, "\n      </section>\n      <section class=\"stats-block\">\n        <div class=\"section-heading compact\"><h2>Hist\u00F3rico recente</h2></div>\n        ").concat(historyHtml, "\n      </section>\n      <button class=\"button button-secondary stats-clear\" id=\"stats-clear\" type=\"button\" data-action=\"clear-stats\">Limpar estat\u00EDsticas</button>\n    </section>");
+    setMainContent("\n    <section class=\"section-view stats-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">Seu perfil</p><h1>Estat\u00EDsticas</h1><p>Veja o que voc\u00EA mais assistiu neste perfil. Os dados ficam salvos somente neste navegador.</p></div></header>\n      <div class=\"stats-summary\">\n        <div class=\"stat-card\"><span>Reprodu\u00E7\u00F5es</span><strong>".concat(plays, "</strong><small>títulos iniciados</small></div>\n        <div class=\"stat-card\"><span>Tempo assistido</span><strong>").concat(formatWatchTime(seconds), "</strong><small>somando todas as sess\u00F5es</small></div>\n        <div class=\"stat-card\"><span>T\u00EDtulos distintos</span><strong>").concat(Object.keys(titles).length, "</strong><small>filmes e s\u00E9ries assistidos</small></div>\n        <div class=\"stat-card\"><span>Conclu\u00EDdos</span><strong>").concat(completed, "</strong><small>marcados como vistos</small></div>\n      </div>\n      <section class=\"stats-block\">\n        <div class=\"section-heading compact\"><h2>Mais assistidos</h2></div>\n        ").concat(topHtml, "\n      </section>\n      <section class=\"stats-block\">\n        <div class=\"section-heading compact\"><h2>Hist\u00F3rico recente</h2></div>\n        ").concat(historyHtml, "\n      </section>\n      <button class=\"button button-secondary stats-clear\" id=\"stats-clear\" type=\"button\" data-action=\"clear-stats\">Limpar estat\u00EDsticas</button>\n    </section>"));
 }
 function browseEmptyState() {
     if (advancedFilterCount(state.advancedFilters)) {
@@ -2341,7 +2399,7 @@ function browseView() {
         return "<option value=\"".concat(option[0], "\"").concat(state.sort === option[0] ? ' selected' : '', ">").concat(option[1], "</option>");
     }).join(''), "</select>");
     var toggle = "<button class=\"filter-chip advanced-toggle ".concat(state.advancedOpen ? 'active' : '', "\" id=\"advanced-toggle\" type=\"button\" aria-expanded=\"").concat(state.advancedOpen, "\">Filtros avançados").concat(filterCount ? " (".concat(filterCount, ")") : '', "</button>");
-    mainContent.innerHTML = "\n    <section class=\"section-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">NEXA catálogo</p><h1>".concat(title, "</h1><p>").concat(subtitle, "</p></div></header>\n      <div class=\"filter-bar\">\n        ").concat(chips, "\n        ").concat(toggle, "\n        ").concat(sortSelect, "\n      </div>\n      ").concat(advancedPanel, "\n      ").concat(content, "\n    </section>");
+    setMainContent("\n    <section class=\"section-view\">\n      <header class=\"section-header\"><div><p class=\"eyebrow\">NEXA catálogo</p><h1>".concat(title, "</h1><p>").concat(subtitle, "</p></div></header>\n      <div class=\"filter-bar\">\n        ").concat(chips, "\n        ").concat(toggle, "\n        ").concat(sortSelect, "\n      </div>\n      ").concat(advancedPanel, "\n      ").concat(content, "\n    </section>"));
 }
 function renderView(view) {
     state.view = view;
@@ -2349,6 +2407,14 @@ function renderView(view) {
     if (view === 'musica')
         state.activeAlbum = null;
     updateActiveNavigation();
+    var announcer = document.getElementById('view-announcer');
+    if (announcer) {
+        var viewNames = {
+            home: 'Início', filmes: 'Filmes', series: 'Séries', originais: 'Originais NEXA',
+            novidades: 'Novidades', lista: 'Minha lista', musica: 'Música', estatisticas: 'Estatísticas'
+        };
+        announcer.textContent = 'Seção: ' + (viewNames[view] || 'Catálogo');
+    }
     if (view === 'home')
         renderHome();
     else if (view === 'musica')
@@ -2389,12 +2455,12 @@ function openDetails(id) {
     state.activeSeason = 0;
     var inList = state.list.has(item.id);
     var liked = state.liked.has(item.id);
-    document.getElementById('detail-hero').style.backgroundImage = "url('".concat(item.backdrop, "')");
+    document.getElementById('detail-hero').style.backgroundImage = "url('".concat(safeCssUrl(item.backdrop), "')");
     document.getElementById('detail-eyebrow').textContent = item.original ? 'NEXA Original' : typeLabel[item.type];
     var detailHero = document.getElementById('detail-hero');
     detailHero.innerHTML = "<div class=\"detail-hero-copy\"><span class=\"detail-logo\">".concat(item.original ? 'NEXA' : typeLabel[item.type].toUpperCase(), "</span><h1 id=\"detail-hero-title\">").concat(escapeHtml(item.title), "</h1></div>");
     document.getElementById('detail-eyebrow').hidden = true;
-    document.getElementById('detail-meta').innerHTML = "<span class=\"match-score\">".concat(item.match, "% de escolha</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.year), "</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.maturity), "</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.duration), "</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.genres.join(', ')), "</span>");
+    document.getElementById('detail-meta').innerHTML = "<span class=\"match-score\">".concat(escapeHtml(item.match), "% de escolha</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.year), "</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.maturity), "</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.duration), "</span><span class=\"meta-divider\"></span><span>").concat(escapeHtml(item.genres.join(', ')), "</span>");
     document.getElementById('detail-description').textContent = item.description;
     document.getElementById('detail-genre').textContent = item.genres.join(', ');
     document.getElementById('detail-director').textContent = item.director;
@@ -2424,7 +2490,7 @@ function openDetails(id) {
     episodeSection.hidden = !((_a = item.seasons) === null || _a === void 0 ? void 0 : _a.length);
     if ((_b = item.seasons) === null || _b === void 0 ? void 0 : _b.length) {
         var select = document.getElementById('season-select');
-        select.innerHTML = item.seasons.map(function (season, index) { return "<option value=\"".concat(index, "\">").concat(season.name, "</option>"); }).join('');
+        select.innerHTML = item.seasons.map(function (season, index) { return "<option value=\"".concat(index, "\">").concat(escapeHtml(season.name), "</option>"); }).join('');
         renderEpisodes(item, 0);
     }
     var related = currentCatalog().filter(function (candidate) { return candidate.id !== item.id && candidate.genres.some(function (genre) { return item.genres.includes(genre); }); }).slice(0, 4);
@@ -2443,7 +2509,7 @@ function renderEpisodes(item, seasonIndex) {
         var number = (_b = episodeFile === null || episodeFile === void 0 ? void 0 : episodeFile.number) !== null && _b !== void 0 ? _b : index + 1;
         var duration = (episodeFile === null || episodeFile === void 0 ? void 0 : episodeFile.duration) || "".concat(28 + index * 3, " min");
         var thumbnail = (episodeFile === null || episodeFile === void 0 ? void 0 : episodeFile.thumbnail) || item.backdrop;
-        return "\n    <article class=\"episode-item\">\n      <div class=\"episode-image\">\n        <img src=\"".concat(escapeHtml(thumbnail), "\" alt=\"\" loading=\"lazy\">\n        <button class=\"episode-play\" type=\"button\" data-action=\"play-episode\" data-id=\"").concat(item.id, "\" data-season=\"").concat(seasonIndex, "\" data-episode=\"").concat(index, "\" aria-label=\"Assistir ").concat(escapeHtml(episode), "\">").concat(icon('play'), "</button>\n      </div>\n      <div class=\"episode-copy\">\n        <div class=\"episode-top\"><strong>").concat(number, ". ").concat(escapeHtml(episode), "</strong><span>").concat(escapeHtml(duration), "</span></div>\n        <p>").concat(escapeHtml(item.description), " Uma nova decis\u00E3o coloca os personagens diante das consequ\u00EAncias de suas escolhas.</p>\n      </div>\n    </article>");
+        return "\n    <article class=\"episode-item\">\n      <div class=\"episode-image\">\n        <img src=\"".concat(escapeHtml(thumbnail), "\" alt=\"\" loading=\"lazy\">\n        <button class=\"episode-play\" type=\"button\" data-action=\"play-episode\" data-id=\"").concat(escapeHtml(item.id), "\" data-season=\"").concat(seasonIndex, "\" data-episode=\"").concat(index, "\" aria-label=\"Assistir ").concat(escapeHtml(episode), "\">").concat(icon('play'), "</button>\n      </div>\n      <div class=\"episode-copy\">\n        <div class=\"episode-top\"><strong>").concat(number, ". ").concat(escapeHtml(episode), "</strong><span>").concat(escapeHtml(duration), "</span></div>\n        <p>").concat(escapeHtml(item.description), " Uma nova decis\u00E3o coloca os personagens diante das consequ\u00EAncias de suas escolhas.</p>\n      </div>\n    </article>");
     }).join('');
 }
 function nextEpisodeTarget(active) {
@@ -2998,6 +3064,29 @@ function showToast(message, type) {
         window.setTimeout(function () { return toast.remove(); }, 240);
     }, 3200);
 }
+function showUpdateToast(worker) {
+    var toast = document.createElement('div');
+    toast.className = 'toast success';
+    toast.innerHTML = "".concat(icon('info'), "<span>Nova versão disponível.</span>");
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = 'Atualizar';
+    button.addEventListener('click', function () {
+        if (worker && worker.postMessage)
+            worker.postMessage({ type: 'SKIP_WAITING' });
+        toast.remove();
+    });
+    toast.append(button);
+    toastRegion.append(toast);
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (reloaded)
+            return;
+        reloaded = true;
+        window.location.reload();
+    });
+}
 function updateActiveNavigation() {
     Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function (button) {
         var active = button.dataset.view === state.view;
@@ -3044,7 +3133,7 @@ function handleSearch(query) {
         state.view = 'busca';
         updateActiveNavigation();
         var items = filteredCatalog('busca');
-        mainContent.innerHTML = "\n      <section class=\"section-view\">\n        <header class=\"section-header\"><div><p class=\"eyebrow\">Resultados</p><h1>".concat(state.query ? "Busca por \u201C".concat(escapeHtml(state.query), "\u201D") : 'Busca', "</h1><p>").concat(items.length, " ").concat(items.length === 1 ? 'resultado encontrado' : 'resultados encontrados', ".</p></div></header>\n        ").concat(searchFiltersView(), "\n        ").concat(items.length ? "<div class=\"media-grid\">".concat(items.map(function (item) { return posterCard(item); }).join(''), "</div>") : "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon('search'), "</span><h2>Nada encontrado</h2><p>Experimente outro t\u00EDtulo, g\u00EAnero ou pessoa do elenco.</p><button class=\"button button-red\" type=\"button\" data-search-reset>Limpar filtros</button></div></div>"), "\n      </section>");
+        setMainContent("\n      <section class=\"section-view\">\n        <header class=\"section-header\"><div><p class=\"eyebrow\">Resultados</p><h1>".concat(state.query ? "Busca por \u201C".concat(escapeHtml(state.query), "\u201D") : 'Busca', "</h1><p>").concat(items.length, " ").concat(items.length === 1 ? 'resultado encontrado' : 'resultados encontrados', ".</p></div></header>\n        ").concat(searchFiltersView(), "\n        ").concat(items.length ? "<div class=\"media-grid\">".concat(items.map(function (item) { return posterCard(item); }).join(''), "</div>") : "<div class=\"empty-state\"><div class=\"empty-state-inner\"><span class=\"empty-icon\">".concat(icon('search'), "</span><h2>Nada encontrado</h2><p>Experimente outro t\u00EDtulo, g\u00EAnero ou pessoa do elenco.</p><button class=\"button button-red\" type=\"button\" data-search-reset>Limpar filtros</button></div></div>"), "\n      </section>"));
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     else if (state.view === 'busca') {
@@ -3557,7 +3646,7 @@ document.getElementById('omdb-dialog-run').addEventListener('click', function ()
                     omdbResults.innerHTML = '<li class="subtitle-result-empty">Nada encontrado. Tente o título original.</li>';
                     return [2 /*return*/];
                 }
-                omdbResults.innerHTML = candidates.map(function (candidate) { return "\n      <li>\n        <button type=\"button\" data-omdb-choose=\"".concat(candidate.imdbId, "\">\n          <strong>").concat(escapeHtml(candidate.title), "</strong>\n          <small>").concat(escapeHtml(candidate.year || '')).concat(candidate.type ? " \u2022 ".concat(candidate.type) : '', "</small>\n        </button>\n      </li>"); }).join('');
+                omdbResults.innerHTML = candidates.map(function (candidate) { return "\n      <li>\n        <button type=\"button\" data-omdb-choose=\"".concat(escapeHtml(candidate.imdbId), "\">\n          <strong>").concat(escapeHtml(candidate.title), "</strong>\n          <small>").concat(escapeHtml(candidate.year || '')).concat(candidate.type ? " \u2022 ".concat(candidate.type) : '', "</small>\n        </button>\n      </li>"); }).join('');
                 return [3 /*break*/, 5];
             case 4:
                 error_8 = _a.sent();
@@ -3654,7 +3743,7 @@ document.getElementById('subtitle-search-run').addEventListener('click', functio
                     subtitleResults.innerHTML = '<li class="subtitle-result-empty">Nenhuma legenda encontrada. Tente o título original em inglês.</li>';
                     return [2 /*return*/];
                 }
-                subtitleResults.innerHTML = results.map(function (result) { return "\n      <li>\n        <button type=\"button\" data-subtitle-download=\"".concat(result.id, "\" data-lang=\"").concat(result.lang || 'pt', "\" data-link=\"").concat(result.link || '', "\" data-api=\"").concat(result.api || '', "\">\n          <strong>").concat(escapeHtml(result.name || 'Legenda'), "</strong>\n          <small>").concat(escapeHtml(result.fileName || ''), "</small>\n          <span class=\"subtitle-result-meta\">").concat(escapeHtml(result.lang || 'pt')).concat(result.hearingImpaired ? ' • SDH' : '').concat(result.downloads ? " \u2022 ".concat(result.downloads, " downloads") : '', "</span>\n        </button>\n      </li>"); }).join('');
+                subtitleResults.innerHTML = results.map(function (result) { return "\n      <li>\n        <button type=\"button\" data-subtitle-download=\"".concat(escapeHtml(result.id), "\" data-lang=\"").concat(escapeHtml(result.lang || 'pt'), "\" data-link=\"").concat(escapeHtml(result.link || ''), "\" data-api=\"").concat(escapeHtml(result.api || ''), "\">\n          <strong>").concat(escapeHtml(result.name || 'Legenda'), "</strong>\n          <small>").concat(escapeHtml(result.fileName || ''), "</small>\n          <span class=\"subtitle-result-meta\">").concat(escapeHtml(result.lang || 'pt')).concat(result.hearingImpaired ? ' • SDH' : '').concat(result.downloads ? " \u2022 ".concat(result.downloads, " downloads") : '', "</span>\n        </button>\n      </li>"); }).join('');
                 return [3 /*break*/, 5];
             case 4:
                 error_10 = _c.sent();
@@ -4352,7 +4441,7 @@ function renderProfileSwitcher() {
     var list = document.getElementById('profile-switch-list');
     list.innerHTML = profiles.map(function (profile) {
         var active = profile.id === activeProfileId;
-        return "<button class=\"profile-switch-item ".concat(active ? 'active' : '', "\" type=\"button\" data-profile-switch=\"").concat(profile.id, "\" aria-pressed=\"").concat(active, "\">\n      <span class=\"avatar small\" style=\"background:").concat(profile.color, "\">").concat(profileInitials(profile.name), "</span>\n      <span class=\"profile-switch-copy\"><strong>").concat(escapeHtml(profile.name), "</strong><small>").concat(profile.kids ? 'Infantil' : 'Perfil').concat(profile.pin ? ' · PIN' : '', "</small></span>\n      ").concat(active ? icon('check') : '', "\n    </button>");
+        return "<button class=\"profile-switch-item ".concat(active ? 'active' : '', "\" type=\"button\" data-profile-switch=\"").concat(escapeHtml(profile.id), "\" aria-pressed=\"").concat(active, "\">\n      <span class=\"avatar small\" style=\"background:").concat(escapeHtml(profile.color), "\">").concat(escapeHtml(profileInitials(profile.name)), "</span>\n      <span class=\"profile-switch-copy\"><strong>").concat(escapeHtml(profile.name), "</strong><small>").concat(profile.kids ? 'Infantil' : 'Perfil').concat(profile.pin ? ' · PIN' : '', "</small></span>\n      ").concat(active ? icon('check') : '', "\n    </button>");
     }).join('');
 }
 function loadProfileState(profile) {
@@ -4479,7 +4568,7 @@ function resetProfileForm() {
 function renderProfilesManager() {
     profilesManagerList.innerHTML = profiles.map(function (profile) {
         var active = profile.id === activeProfileId;
-        return "<div class=\"profile-manage-row ".concat(active ? 'active' : '', "\">\n      <span class=\"avatar\" style=\"background:").concat(profile.color, "\">").concat(profileInitials(profile.name), "</span>\n      <div class=\"profile-manage-copy\"><strong>").concat(escapeHtml(profile.name)).concat(active ? ' <span class="profile-current">Em uso</span>' : '', "</strong><small>").concat(profileMeta(profile), "</small></div>\n      ").concat(profile.kids ? "<span class=\"profile-badge\">".concat(icon('lock'), " Infantil</span>") : '', "\n      <div class=\"profile-manage-actions\">\n        <button class=\"button button-secondary\" type=\"button\" data-profile-edit=\"").concat(profile.id, "\">Editar</button>\n        <button class=\"button button-ghost\" type=\"button\" data-profile-delete=\"").concat(profile.id, "\" ").concat(profiles.length === 1 ? 'disabled' : '', ">Excluir</button>\n      </div>\n    </div>");
+        return "<div class=\"profile-manage-row ".concat(active ? 'active' : '', "\">\n      <span class=\"avatar\" style=\"background:").concat(escapeHtml(profile.color), "\">").concat(escapeHtml(profileInitials(profile.name)), "</span>\n      <div class=\"profile-manage-copy\"><strong>").concat(escapeHtml(profile.name)).concat(active ? ' <span class="profile-current">Em uso</span>' : '', "</strong><small>").concat(profileMeta(profile), "</small></div>\n      ").concat(profile.kids ? "<span class=\"profile-badge\">".concat(icon('lock'), " Infantil</span>") : '', "\n      <div class=\"profile-manage-actions\">\n        <button class=\"button button-secondary\" type=\"button\" data-profile-edit=\"").concat(escapeHtml(profile.id), "\">Editar</button>\n        <button class=\"button button-ghost\" type=\"button\" data-profile-delete=\"").concat(escapeHtml(profile.id), "\" ").concat(profiles.length === 1 ? 'disabled' : '', ">Excluir</button>\n      </div>\n    </div>");
     }).join('');
 }
 function showProfilesDialog() {
@@ -4720,13 +4809,18 @@ function registerServiceWorker() {
                     return;
                 worker.addEventListener('statechange', function () {
                     if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-                        showToast('Nova versão disponível. Recarregue para atualizar.', 'success');
+                        showUpdateToast(worker);
                     }
                 });
             });
         }).catch(function () { });
     });
 }
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden)
+        flushWatchTime();
+});
+window.addEventListener('pagehide', flushWatchTime);
 registerServiceWorker();
 setTheme(storage.get('nexa-theme', 'dark') === 'light');
 setAutoplay(state.autoplay);

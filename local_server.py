@@ -12,19 +12,20 @@ Serve o PWA em http://localhost:8090 e expõe a biblioteca do HD em /api/local.
 from __future__ import annotations
 
 import argparse
-import base64
 import gzip
 import json
 import mimetypes
 import os
 import re
 import shutil
+import stat
 import subprocess
 import threading
 import time
 import html
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -40,6 +41,21 @@ OMDB_CACHE_FILE = DATA_DIR / "omdb-cache.json"
 OMDB_CHOICES_FILE = DATA_DIR / "omdb-choices.json"
 STATIC_DENY = {".data", ".git", ".github", "__pycache__"}
 TRANSCODE_SLOTS = threading.Semaphore(2)
+BOOST_SLOTS = threading.Semaphore(2)
+MAX_REMOTE_BYTES = 12 * 1024 * 1024
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+DEFAULT_ORIGINS = [
+    "http://localhost",
+    "http://127.0.0.1",
+    "https://cleberleonheart-maker.github.io",
+]
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; "
+    "connect-src 'self' http://localhost:* http://127.0.0.1:* https:; "
+    "media-src 'self' blob: https:; object-src 'none'; base-uri 'self'; "
+    "frame-ancestors 'none'; form-action 'self'"
+)
 _catalog_lock = threading.Lock()
 _scan_start_lock = threading.Lock()
 _scan_pending = False
@@ -72,6 +88,78 @@ def log(message: str) -> None:
     print(f"[nexa] {message}", flush=True)
 
 
+def origin_allowed(origin: str, allowed: list[str] | None = None) -> bool:
+    value = str(origin or "").strip().rstrip("/")
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    patterns = allowed if allowed is not None else list(_config.get("allowedOrigins") or DEFAULT_ORIGINS)
+    for pattern in patterns:
+        try:
+            expected = urlparse(str(pattern).strip().rstrip("/"))
+            expected_port = expected.port
+        except ValueError:
+            continue
+        if expected.scheme != parsed.scheme:
+            continue
+        if (expected.hostname or "").lower() != parsed.hostname.lower():
+            continue
+        if expected_port is None or expected_port == port:
+            return True
+    return False
+
+
+def host_allowed(host_header: str, server_host: str | None = None) -> bool:
+    value = str(host_header or "").strip().lower().split("@")[-1]
+    if value.startswith("["):
+        host = value[1:value.find("]")] if "]" in value else value
+    else:
+        host = value.split(":", 1)[0]
+    if not host:
+        return False
+    if server_host in ("0.0.0.0", "::", None, ""):
+        return True
+    return host in LOCAL_HOSTS or host == str(server_host).lower()
+
+
+def remote_host_allowed(url: str, allowed: tuple[str, ...]) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return bool(host) and any(host == name or host.endswith("." + name) for name in allowed)
+
+
+def read_limited(
+    request: urllib.request.Request,
+    limit: int = MAX_REMOTE_BYTES,
+    timeout: float = 40,
+    allowed_hosts: tuple[str, ...] | None = None,
+) -> bytes:
+    if allowed_hosts and not remote_host_allowed(request.full_url, allowed_hosts):
+        raise RuntimeError("link remoto não permitido")
+    chunks: list[bytes] = []
+    total = 0
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        if allowed_hosts and not remote_host_allowed(response.geturl(), allowed_hosts):
+            raise RuntimeError("redirecionamento para host não permitido")
+        while True:
+            chunk = response.read(64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise RuntimeError("arquivo remoto excede o tamanho permitido")
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def load_config() -> dict:
     config = {"root": lib.detect_root()}
     try:
@@ -83,6 +171,9 @@ def load_config() -> dict:
             for key in ("subtitleApiKey", "subtitleUser", "subtitlePassword", "omdbApiKey"):
                 if data.get(key):
                     config[key] = str(data[key])
+            origins = data.get("allowedOrigins")
+            if isinstance(origins, list):
+                config["allowedOrigins"] = [str(value) for value in origins if str(value).strip()]
     except (OSError, ValueError):
         pass
     return config
@@ -93,6 +184,7 @@ def save_config(config: dict) -> None:
     tmp = CONFIG_FILE.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(config, handle, ensure_ascii=False, indent=2)
+    os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
     os.replace(tmp, CONFIG_FILE)
 
 
@@ -307,8 +399,7 @@ def opensubtitles_v1_fetch(link: str) -> bytes:
         "User-Agent": SUBTITLE_USER_AGENT,
     })
     try:
-        with urllib.request.urlopen(request, timeout=40) as response:
-            return response.read()
+        return read_limited(request, allowed_hosts=("opensubtitles.com", "opensubtitles.org"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", "replace")[:200]
         raise RuntimeError(f"OpenSubtitles respondeu {error.code}: {detail or error.reason}") from error
@@ -484,8 +575,9 @@ def title_tokens(text: str) -> list[str]:
     return [word for word in words if len(word) > 2 and word not in stop]
 
 
-def omdb_pick(title: str, year: int | None = None) -> dict:
-    cache = omdb_cache_read()
+def omdb_pick(title: str, year: int | None = None, cache: dict | None = None) -> dict:
+    own_cache = cache is None
+    cache = cache if cache is not None else omdb_cache_read()
     key = normalize_title(title) + (f"|{year}" if year else "")
     if key in cache:
         return cache[key] or {}
@@ -523,9 +615,22 @@ def omdb_pick(title: str, year: int | None = None) -> dict:
                 best = candidate
         if best and best_score >= 3:
             data = omdb_request({"i": best.get("imdbID") or ""}) or {}
-    cache = omdb_cache_read()
     cache[key] = data
-    omdb_cache_write(cache)
+    if own_cache:
+        omdb_cache_write(cache)
+    return data
+
+
+def omdb_by_id(imdb_id: str, cache: dict | None = None) -> dict:
+    own_cache = cache is None
+    cache = cache if cache is not None else omdb_cache_read()
+    key = f"i:{imdb_id}"
+    if key in cache:
+        return cache[key] or {}
+    data = omdb_request({"i": imdb_id})
+    cache[key] = data
+    if own_cache:
+        omdb_cache_write(cache)
     return data
 
 
@@ -592,26 +697,32 @@ def maturity_from_rating(rated: str) -> str:
 def enrich_movies_with_omdb(library: dict) -> int:
     if not str(_config.get("omdbApiKey") or "").strip():
         return 0
-    updated = 0
-    for item in library.get("items") or []:
-        if not item.get("local") or item.get("type") != "filme":
-            continue
-        title = item.get("title") or ""
-        file_year = item.get("fileYear")
-        query_title = re.sub(r"\(\d{4}\)", "", title).strip()
-        choice = omdb_choices_read().get(f"{item.get('rootKey')}:{item.get('fileRel')}")
+    items = [item for item in library.get("items") or []
+             if item.get("local") and item.get("type") == "filme"]
+    if not items:
+        return 0
+    choices = omdb_choices_read()
+    cache = omdb_cache_read()
+
+    def lookup(item: dict) -> dict:
+        choice = choices.get(f"{item.get('rootKey')}:{item.get('fileRel')}")
         try:
             if choice and choice.get("imdbId"):
-                data = omdb_request({"i": choice["imdbId"]})
-            else:
-                data = omdb_pick(query_title, file_year)
+                return omdb_by_id(choice["imdbId"], cache)
+            title = re.sub(r"\(\d{4}\)", "", str(item.get("title") or "")).strip()
+            return omdb_pick(title, item.get("fileYear"), cache)
         except RuntimeError as error:
             log(f"OMDb: {error}")
-            break
-        if not data:
-            continue
-        apply_omdb_data(item, data)
-        updated += 1
+            return {}
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lookup, items))
+    updated = 0
+    for item, data in zip(items, results):
+        if data:
+            apply_omdb_data(item, data)
+            updated += 1
+    omdb_cache_write(cache)
     counts = {}
     for item in library.get("items") or []:
         if item.get("local") and item.get("type") == "filme":
@@ -712,13 +823,22 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get("NEXA_LOG") == "1":
             super().log_message(fmt, *args)
 
+    def authorized(self) -> bool:
+        if not host_allowed(self.headers.get("Host", ""), getattr(self.server, "nexa_host", None)):
+            return False
+        origin = self.headers.get("Origin")
+        return not origin or origin_allowed(origin)
+
     def cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if origin and origin_allowed(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Range, Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Range, Content-Type")
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
-        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Security-Policy", CSP)
 
     def send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -764,6 +884,9 @@ class Handler(BaseHTTPRequestHandler):
         return lib.resolve_media(library, root_key, rel)
 
     def do_OPTIONS(self) -> None:
+        if not self.authorized():
+            self.send_json(HTTPStatus.FORBIDDEN, {"error": "acesso negado"})
+            return
         self.send_response(HTTPStatus.NO_CONTENT)
         self.cors()
         self.send_header("Content-Length", "0")
@@ -773,6 +896,9 @@ class Handler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_GET(self) -> None:
+        if not self.authorized():
+            self.send_json(HTTPStatus.FORBIDDEN, {"error": "acesso negado"})
+            return
         parsed = urlparse(self.path)
         pathname = parsed.path
         query = parse_qs(parsed.query)
@@ -831,12 +957,15 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:  # noqa: BLE001
             log(f"erro em {pathname}: {error}")
             try:
-                self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
+                self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "erro interno do servidor"})
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
     def do_POST(self) -> None:
         global _config
+        if not self.authorized():
+            self.send_json(HTTPStatus.FORBIDDEN, {"error": "acesso negado"})
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/local/scan":
             body = read_body(self)
@@ -921,9 +1050,15 @@ class Handler(BaseHTTPRequestHandler):
         self.stream_file(path)
 
     def stream_amplified(self, path: str, boost: float, start: float = 0.0) -> None:
-        if not ffmpeg_available():
+        if not ffmpeg_available() or not BOOST_SLOTS.acquire(blocking=False):
             self.stream_file(path)
             return
+        try:
+            self._stream_amplified(path, boost, start)
+        finally:
+            BOOST_SLOTS.release()
+
+    def _stream_amplified(self, path: str, boost: float, start: float = 0.0) -> None:
         args = [
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
         ]
@@ -965,7 +1100,11 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             if proc.poll() is None:
                 proc.terminate()
-            proc.wait(timeout=5)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2)
 
     def api_subtitle(self, query: dict) -> None:
         path = self.resolve_query_path(query)
@@ -980,7 +1119,8 @@ class Handler(BaseHTTPRequestHandler):
                 with open(path, "r", encoding="latin-1", errors="replace") as handle:
                     text = handle.read()
             except OSError as error:
-                self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
+                log(f"falha ao ler legenda: {error}")
+                self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "não foi possível ler a legenda"})
                 return
         extension = os.path.splitext(path)[1].lower()
         vtt = lib.subtitle_to_vtt(text, extension)
@@ -1059,8 +1199,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(HTTPStatus.BAD_REQUEST, {"error": "link de legenda inválido"})
                     return
                 request = urllib.request.Request(link, headers=opensubtitles_headers())
-                with urllib.request.urlopen(request, timeout=40) as response:
-                    raw = response.read()
+                raw = read_limited(request, allowed_hosts=("opensubtitles.org",))
         except RuntimeError as error:
             self.send_json(HTTPStatus.BAD_GATEWAY, {"error": str(error)})
             return
@@ -1138,10 +1277,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             if imdb:
-                data = omdb_request({"i": imdb})
+                data = omdb_by_id(imdb)
             else:
                 year = str((query.get("year") or [""])[0]).strip()
-                data = omdb_request({"t": title, **({"y": year} if year.isdigit() else {})})
+                data = omdb_pick(title, int(year) if year.isdigit() else None)
         except RuntimeError as error:
             self.send_json(HTTPStatus.BAD_GATEWAY, {"error": str(error)})
             return
@@ -1418,11 +1557,17 @@ def main() -> None:
     parser.add_argument("--root", help="pasta do HD (contém filmes, series e músicas)")
     parser.add_argument("--port", type=int, default=int(os.environ.get("NEXA_PORT", "8090")))
     parser.add_argument("--host", default=os.environ.get("NEXA_HOST", "127.0.0.1"))
+    parser.add_argument("--allow-origin", action="append", default=[], help="origem web autorizada (ex.: https://exemplo.github.io)")
     parser.add_argument("--scan", action="store_true", help="escaneia a biblioteca ao iniciar")
     args = parser.parse_args()
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     _config = load_config()
+    if args.allow_origin:
+        _config = {**_config, "allowedOrigins": list(dict.fromkeys([
+            *(_config.get("allowedOrigins") or []), *args.allow_origin
+        ]))}
+        save_config(_config)
     if args.root:
         _config = {**_config, "root": lib.detect_root(args.root)}
         save_config(_config)
@@ -1438,6 +1583,7 @@ def main() -> None:
         start_background_scan(_config["root"])
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server.nexa_host = args.host
     log(f"NEXA local em http://{args.host}:{args.port}")
     if args.host == "0.0.0.0":
         import socket

@@ -1,0 +1,15 @@
+{
+  "name": "nexa-media-center",
+  "version": "31.0.0",
+  "private": true,
+  "description": "PWA media center with optional local library server",
+  "scripts": {
+    "check": "node --check app.js && node --check service-worker.js && node --check nexa-version.js && node --check tests/smoke.js",
+    "test:js": "node tests/smoke.js",
+    "test:py": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test": "npm run check && npm run test:js && npm run test:py"
+  },
+  "devDependencies": {
+    "jsdom": "^22.1.0"
+  }
+}

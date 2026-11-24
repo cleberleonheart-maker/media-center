@@ -1259,7 +1259,7 @@ def detect_root(explicit: str | None = None) -> str:
     removable = "/mnt/chromeos/removable"
     try:
         for entry in os.scandir(removable):
-            if entry.is_dir() and os.path.isdir(os.path.join(entry.path, "filmes")) or os.path.isdir(os.path.join(entry.path, "series")):
+            if entry.is_dir() and (os.path.isdir(os.path.join(entry.path, "filmes")) or os.path.isdir(os.path.join(entry.path, "series"))):
                 candidates.append(entry.path)
     except OSError:
         pass

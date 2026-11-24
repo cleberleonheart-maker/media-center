@@ -26,17 +26,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Syntax check
-        run: |
-          node --check app.js
-          node --check service-worker.js
-          node --check tests/smoke.js
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Install smoke dependencies
-        run: npm install --no-save --no-package-lock jsdom@22
-
-      - name: Run smoke test
-        run: node tests/smoke.js
+      - name: Run checks and tests
+        run: npm test
 
   deploy:
     needs: smoke
@@ -55,8 +49,8 @@ jobs:
 
       - name: Prepare artifact
         run: |
-          rm -rf .data __pycache__ .git .github
-          rm -f local_server.py local_library.py
+          rm -rf .data __pycache__ .git .github tests node_modules
+          rm -f local_server.py local_library.py package.json package-lock.json
           rm -rf .pytest_cache
           find . -name '*.pyc' -delete
 

@@ -3,6 +3,7 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https:; media-src 'self' blob: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 
 /
   Cache-Control: no-cache
@@ -11,6 +12,15 @@
   Cache-Control: no-cache
 
 /service-worker.js
+  Cache-Control: no-cache
+
+/app.js
+  Cache-Control: no-cache
+
+/styles.css
+  Cache-Control: no-cache
+
+/nexa-version.js
   Cache-Control: no-cache
 
 /manifest.json
